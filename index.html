@@ -5,6 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Price Adjust Tracker</title>
 <meta name="theme-color" content="#f6f7f5">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Price Adjust">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
@@ -185,6 +190,7 @@ input.in { width: 100%; padding: 9px 11px; border: 1px solid var(--rule); border
 .stores .addr { display: block; font-size: .85rem; color: var(--muted); }
 .stores .dist { font-size: .85rem; color: var(--muted); white-space: nowrap; }
 .by-number > summary { cursor: pointer; font-size: .9rem; }
+.install { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; font-size: .92rem; }
 .check { display: flex; gap: 10px; align-items: flex-start; font-size: .95rem; }
 .check input { margin-top: 3px; width: 18px; height: 18px; accent-color: var(--accent); }
 .msg { font-size: .9rem; min-height: 1.35em; }
@@ -370,6 +376,10 @@ input.in { width: 100%; padding: 9px 11px; border: 1px solid var(--rule); border
         </div>
         <p class="muted" style="font-size:.9rem;margin:6px 0 0">It's printed at the top of your receipt, next to the store name (for example, Pentagon City #233).</p>
       </details>
+      <div class="install" id="installBox" hidden>
+        <p style="margin:0"><strong>Put it on your home screen</strong> <span class="muted" id="installHow"></span></p>
+        <button class="btn" type="button" id="installBtn" hidden>Install app</button>
+      </div>
       <label class="check" id="alertsRow" hidden><input type="checkbox" id="sAlerts"> Email me when something I bought drops in price (checked every 2 days)</label>
       <div id="tokenBox">
       <label class="f">GitHub token, optional (for email alerts and the same list on all your devices)<input class="in" id="sToken" type="password" placeholder="github_pat_…"></label>
@@ -950,6 +960,26 @@ $("reviewAdd").addEventListener("click", async () => {
     window.scrollTo({ top: 0, behavior: "smooth" });
   } catch (err) { msg.className = "msg err"; msg.textContent = err.message; $("reviewAdd").disabled = false; }
 });
+
+// Install as an app: Chrome/Android/desktop show a button; iPhone needs Safari's Share menu.
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+const standalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone;
+let installEvent = null;
+addEventListener("beforeinstallprompt", e => {
+  e.preventDefault(); installEvent = e;
+  $("installBox").hidden = false; $("installBtn").hidden = false;
+  $("installHow").textContent = "Opens like an app, no browser bar.";
+});
+$("installBtn").addEventListener("click", async () => {
+  if (!installEvent) return;
+  installEvent.prompt();
+  await installEvent.userChoice;
+  installEvent = null; $("installBox").hidden = true;
+});
+if (!standalone && /iphone|ipad|ipod/i.test(navigator.userAgent)) {
+  $("installBox").hidden = false;
+  $("installHow").textContent = "In Safari, tap Share, then Add to Home Screen.";
+}
 
 if (window.Cloud?.enabled) {
   $("tokenBox").hidden = true;
