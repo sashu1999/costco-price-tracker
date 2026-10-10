@@ -22,6 +22,6 @@ in-store price at your warehouse. It flags when you're due a price adjustment
 | `data/coupons.json`, `data/history.json`, `data/latest.json` | Written by the scheduled check. |
 | `tracker/` | Python used by the scheduled check (`python tracker/run.py`). |
 
-To add or remove items from the app, paste a fine-grained GitHub token
-(this repo only, Contents: read and write) under Settings. It is kept in
+Items you add are kept in your browser. To also get email alerts, paste a fine-grained GitHub token
+(this repo only, Contents: read and write) under Settings, so items are saved to the repo. It is kept in
 your browser only.

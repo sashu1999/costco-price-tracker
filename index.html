@@ -161,11 +161,11 @@ summary { cursor: pointer; font-weight: 500; }
     <summary>Settings</summary>
     <div class="settings">
       <label>Warehouse number<input id="sWh" class="mono" inputmode="numeric"></label>
-      <label>GitHub token (needed to add or remove items)<input id="sToken" type="password" placeholder="github_pat_…"></label>
+      <label>GitHub token (optional: lets the 2-day check email you about drops)<input id="sToken" type="password" placeholder="github_pat_…"></label>
       <ol>
         <li>Open <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">GitHub → Fine-grained tokens</a>.</li>
         <li>Repository access: only <span class="mono" id="repoName">this repo</span>. Permissions: Contents → Read and write.</li>
-        <li>Paste it here. It stays in this browser only.</li>
+        <li>Paste it here. It stays in this browser only. Items you added before are copied to the repo.</li>
       </ol>
       <div><button type="button" id="saveSettings">Save settings</button></div>
       <p class="msg" id="setMsg" role="status"></p>
@@ -234,12 +234,24 @@ async function ghPut(path, data, sha, message) {
   return (await r.json()).content.sha;
 }
 
+// Without a token, the list lives in this browser. With one, it's saved to the repo
+// so the scheduled check (and its email alerts) can see it.
+function localItems() { try { return JSON.parse(store.get("localItems") || "null"); } catch { return null; } }
+async function saveItems(next, message) {
+  if (!store.get("ghToken")) { store.set("localItems", JSON.stringify(next)); state.items = next; return "browser"; }
+  state.itemsSha = await ghPut("data/items.json", next, state.itemsSha, message);
+  state.items = next;
+  store.set("localItems", "");
+  return "repo";
+}
+
 async function loadData() {
   try {
     const items = await ghGet("data/items.json"); state.items = items.data; state.itemsSha = items.sha;
+    if (!store.get("ghToken") && localItems()) state.items = localItems();
     const cfg = await ghGet("data/config.json"); state.warehouse = String(cfg.data.warehouse); state.configSha = cfg.sha;
   } catch {
-    state.items = await getJSON("data/items.json").catch(() => []);
+    state.items = localItems() || await getJSON("data/items.json").catch(() => []);
     state.warehouse = String((await getJSON("data/config.json").catch(() => ({}))).warehouse || "233");
   }
   state.coupons = (await getJSON("data/coupons.json").catch(() => ({}))).coupons || {};
@@ -370,8 +382,7 @@ $("addForm").addEventListener("submit", async e => {
     const live = await livePrices([item]).catch(() => ({}));
     const entry = { item, paid, date: $("fDate").value || null, note: $("fNote").value.trim() || live[item]?.name || "" };
     const next = [...state.items, entry];
-    state.itemsSha = await ghPut("data/items.json", next, state.itemsSha, `Add item ${item}`);
-    state.items = next;
+    await saveItems(next, `Add item ${item}`);
     Object.assign(state.live, live);
     e.target.reset();
     msg.textContent = live[item]?.name ? `Added ${live[item].name}.` : `Added #${item}. Costco has no price for it at this warehouse yet.`;
@@ -391,8 +402,7 @@ $("list").addEventListener("click", async e => {
   const next = state.items.filter((_, i) => i !== idx);
   btn.disabled = true;
   try {
-    state.itemsSha = await ghPut("data/items.json", next, state.itemsSha, `Remove item ${it.item}`);
-    state.items = next;
+    await saveItems(next, `Remove item ${it.item}`);
     render();
   } catch (err) {
     $("addMsg").className = "msg err"; $("addMsg").textContent = err.message; btn.disabled = false;
@@ -411,8 +421,13 @@ $("saveSettings").addEventListener("click", async () => {
       state.configSha = await ghPut("data/config.json", { warehouse: wh }, state.configSha, `Use warehouse ${wh}`);
       state.warehouse = wh;
     }
-    if (store.get("ghToken") && !state.itemsSha) {
-      const items = await ghGet("data/items.json"); state.items = items.data; state.itemsSha = items.sha;
+    if (store.get("ghToken")) {
+      const local = localItems();
+      const remote = await ghGet("data/items.json"); state.itemsSha = remote.sha;
+      if (local) {
+        const merged = [...remote.data.filter(r => !local.some(l => String(l.item) === String(r.item))), ...local];
+        await saveItems(merged, "Add items saved in the browser");
+      } else state.items = remote.data;
     }
     msg.textContent = "Saved.";
     refresh();
@@ -478,12 +493,12 @@ $("reviewAdd").addEventListener("click", async () => {
   $("reviewAdd").disabled = true;
   msg.textContent = "Saving…";
   try {
-    state.itemsSha = await ghPut("data/items.json", next, state.itemsSha, `Add ${chosen.length} item${chosen.length > 1 ? "s" : ""} from receipts`);
-    state.items = next;
+    const where = await saveItems(next, `Add ${chosen.length} item${chosen.length > 1 ? "s" : ""} from receipts`);
+    var savedNote = where === "browser" ? " Saved in this browser. Add a GitHub token in Settings to get email alerts." : "";
     pending = []; $("review").hidden = true;
     msg.textContent = `Added ${chosen.length} item${chosen.length > 1 ? "s" : ""}. Checking prices…`;
     await refresh();
-    msg.textContent = `Added ${chosen.length} item${chosen.length > 1 ? "s" : ""}.`;
+    msg.textContent = `Added ${chosen.length} item${chosen.length > 1 ? "s" : ""}.${savedNote}`;
   } catch (err) {
     msg.className = "msg err"; msg.textContent = err.message;
   }
