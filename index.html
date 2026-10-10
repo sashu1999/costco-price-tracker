@@ -140,6 +140,8 @@ button { cursor: pointer; }
 .bar { width: 70px; height: 5px; border-radius: 3px; background: var(--sunk); overflow: hidden; }
 .bar i { display: block; height: 100%; background: var(--good-strong); }
 .bar.late i { background: var(--accent); }
+.card.urgent { box-shadow: var(--shadow), inset 3px 0 0 var(--accent); }
+.card.urgent .window { color: var(--accent); font-weight: 600; }
 .x { border: 0; background: none; color: var(--muted); padding: 4px 6px; border-radius: 6px; font-size: .85rem; }
 .x:hover { color: var(--accent); background: var(--sunk); }
 .empty { background: var(--surface); border-radius: 14px; padding: 18px; color: var(--muted); text-align: center; }
@@ -493,6 +495,11 @@ const money = n => `$${Number(n).toFixed(2)}`;
 const today = () => new Date().toISOString().slice(0, 10);
 const daysSince = d => Math.floor((Date.now() - new Date(d + "T12:00:00").getTime()) / 864e5);
 const shortDate = d => new Date(d + "T12:00:00").toLocaleDateString([], { month: "short", day: "numeric" });
+const addDays = (d, n) => { const t = new Date(d + "T12:00:00"); t.setDate(t.getDate() + n); return t.toISOString().slice(0, 10); };
+const URGENT_DAYS = 3;
+// "Claim by Oct 14 · 4 days left"
+const claimText = (date, left) => left === 0 ? `Last day to claim (${shortDate(addDays(date, ADJUST_DAYS))})`
+  : `Claim by ${shortDate(addDays(date, ADJUST_DAYS))} · ${left} day${left === 1 ? "" : "s"} left`;
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
 // Costco's warehouse names are all caps with buyer codes ("NAUTICA PJ PANT 2PK FY23 P480 T120 H4").
@@ -527,9 +534,10 @@ function card(item, a, idx) {
   else if (item.paid && a.price > item.paid) chip = `<span class="chip plain">Up ${money(a.price - item.paid)} since you bought</span>`;
   else if (item.paid && a.kind !== "past") chip = `<span class="chip plain">Same price</span>`;
   const win = a.left != null && a.kind !== "past"
-    ? `<span class="window"><span class="bar ${a.left <= 5 ? "late" : ""}"><i style="width:${Math.max(4, Math.min(100, (a.left / ADJUST_DAYS) * 100))}%"></i></span>${a.left === 0 ? "Last day" : `${a.left} day${a.left === 1 ? "" : "s"} left`}</span>`
+    ? `<span class="window"><span class="bar ${a.left <= URGENT_DAYS ? "late" : ""}"><i style="width:${Math.max(4, Math.min(100, (a.left / ADJUST_DAYS) * 100))}%"></i></span>${claimText(item.date, a.left)}</span>`
     : "";
-  return `<li class="card">
+  const urgent = a.kind === "due" && a.left != null && a.left <= URGENT_DAYS;
+  return `<li class="card${urgent ? " urgent" : ""}">
     <div class="name">${esc(a.name)}</div>
     <div class="now">
       <span class="price mono">${a.price != null ? money(a.price) : "—"}</span>
@@ -577,7 +585,7 @@ function render() {
     hero.innerHTML = `<p class="kicker">You can claim back</p>
       <p class="big mono">${money(total)}</p>
       <ul class="claims">${due.map(r => `<li><span class="what">${esc(r.a.name)}: ${money(r.a.back)}</span>
-        <span class="left ${r.a.left != null && r.a.left <= 5 ? "urgent" : ""}">${r.a.left == null ? "" : r.a.left === 0 ? "Last day" : `${r.a.left} day${r.a.left === 1 ? "" : "s"} left`}</span></li>`).join("")}</ul>
+        <span class="left ${r.a.left != null && r.a.left <= URGENT_DAYS ? "urgent" : ""}">${r.a.left == null ? "" : r.a.left === 0 ? "Last day" : `by ${shortDate(addDays(r.it.date, ADJUST_DAYS))} · ${r.a.left}d left`}</span></li>`).join("")}</ul>
       <p class="sub">Bring the receipt (or your membership card) to the membership counter at any Costco and ask for a price adjustment.</p>`;
   } else {
     hero.innerHTML = `<p class="kicker">Nothing to claim right now</p>

@@ -81,7 +81,8 @@ def claims_for(items, prices, today, already_sent):
         if (it["item"], round(price, 2)) in already_sent:
             continue
         out.append({"item": it["item"], "name": r["name"] or it.get("name") or f"Item {it['item']}",
-                    "paid": paid, "price": price, "back": round(paid - price, 2), "left": left})
+                    "paid": paid, "price": price, "back": round(paid - price, 2), "left": left,
+                    "by": bought + dt.timedelta(days=ADJUST_DAYS) if bought else None})
     return sorted(out, key=lambda c: (c["left"] is None, c["left"]))
 
 
@@ -90,7 +91,7 @@ def email_body(claims, store):
     lines = [f"You can claim ${total:.2f} back at Costco.", ""]
     rows = []
     for c in claims:
-        left = "" if c["left"] is None else f" ({c['left']} day{'s' if c['left'] != 1 else ''} left)"
+        left = "" if c["left"] is None else f" (claim by {c['by']:%b %-d}, {c['left']} day{'s' if c['left'] != 1 else ''} left)"
         lines.append(f"- {c['name']} #{c['item']}: paid ${c['paid']:.2f}, now ${c['price']:.2f}. "
                      f"Ask for ${c['back']:.2f}{left}.")
         rows.append(f"<tr><td style='padding:6px 12px 6px 0'>{escape(c['name'])} <span style='color:#666'>#{c['item']}</span></td>"
