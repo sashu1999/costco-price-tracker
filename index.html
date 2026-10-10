@@ -145,6 +145,13 @@ button { cursor: pointer; }
 .x { border: 0; background: none; color: var(--muted); padding: 4px 6px; border-radius: 6px; font-size: .85rem; }
 .x:hover { color: var(--accent); background: var(--sunk); }
 .acts { display: flex; align-items: center; gap: 6px; }
+.hist { grid-column: 1 / -1; margin: 4px 0 0; }
+.hist svg { width: 100%; height: 90px; display: block; overflow: visible; }
+.hist polyline { fill: none; stroke: var(--good-strong); stroke-width: 2; vector-effect: non-scaling-stroke; }
+.hist circle { fill: var(--good-strong); }
+.hist .paid { stroke: var(--muted); stroke-dasharray: 4 4; stroke-width: 1; vector-effect: non-scaling-stroke; }
+.hist figcaption { display: flex; justify-content: space-between; gap: 8px; font-size: .78rem; color: var(--muted); margin-top: 4px; }
+.hist-empty { grid-column: 1 / -1; margin: 4px 0 0; font-size: .85rem; color: var(--muted); }
 .btn.small { padding: 5px 10px; font-size: .85rem; border-radius: 8px; }
 .hero .saved { margin: 0; font-size: .92rem; }
 .empty { background: var(--surface); border-radius: 14px; padding: 18px; color: var(--muted); text-align: center; }
@@ -470,7 +477,9 @@ async function loadData() {
   const wh = store.get("warehouse");
   if (wh && !store.get("ghToken") && !window.Cloud?.enabled) { state.warehouse = wh; state.warehouseName = store.get("warehouseName"); }
   state.coupons = (await getJSON("data/coupons.json").catch(() => ({}))).coupons || {};
-  state.history = await getJSON("data/history.json").catch(() => ({}));
+  state.history = window.Cloud?.enabled
+    ? await Cloud.loadHistory(state.warehouse, state.items.map(i => i.item))
+    : await getJSON("data/history.json").catch(() => ({}));
   state.lastRun = (await getJSON("data/latest.json").catch(() => ({}))).date || null;
 }
 
@@ -535,6 +544,29 @@ function assess(item) {
   return { live, price, age, left, prev, kind, back, name: prettyName(live?.name || item.name || item.note) || `Item #${item.item}` };
 }
 
+// Small line chart of saved daily prices plus today's, with a dashed line at what was paid.
+function chart(item, a) {
+  const pts = (state.history[item.item] || []).filter(p => p.date !== today()).map(p => ({ ...p }));
+  if (a.price != null) pts.push({ date: today(), price: a.price });
+  if (pts.length < 2) return `<p class="hist-empty">Price history builds up from here: one price is saved every check.${pts.length ? ` Today: ${money(pts[0].price)}.` : ""}</p>`;
+  const W = 300, H = 90, pad = 6;
+  const vals = pts.map(p => p.price).concat(item.paid ? [item.paid] : []);
+  const lo = Math.min(...vals), hi = Math.max(...vals), span = hi - lo || 1;
+  const t0 = new Date(pts[0].date).getTime(), t1 = new Date(pts[pts.length - 1].date).getTime(), tspan = t1 - t0 || 1;
+  const x = d => pad + (new Date(d).getTime() - t0) / tspan * (W - 2 * pad);
+  const y = v => pad + (hi - v) / span * (H - 2 * pad);
+  const line = pts.map(p => `${x(p.date).toFixed(1)},${y(p.price).toFixed(1)}`).join(" ");
+  return `<figure class="hist">
+    <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Price history for ${esc(a.name)}">
+      ${item.paid ? `<line class="paid" x1="0" x2="${W}" y1="${y(item.paid)}" y2="${y(item.paid)}"/>` : ""}
+      <polyline points="${line}"/>
+      ${pts.map(p => `<circle cx="${x(p.date)}" cy="${y(p.price)}" r="2.5"><title>${shortDate(p.date)}: ${money(p.price)}</title></circle>`).join("")}
+    </svg>
+    <figcaption><span>${shortDate(pts[0].date)}</span><span>Low ${money(Math.min(...pts.map(p => p.price)))}${item.paid ? ` · paid ${money(item.paid)} (dashed)` : ""}</span><span>Today</span></figcaption>
+  </figure>`;
+}
+const openCharts = new Set();
+
 function card(item, a, idx) {
   let chip = "";
   if (a.kind === "claimed") chip = `<span class="chip good">Got ${money(item.claimedAmt || 0)} back on ${shortDate(item.claimedAt.slice(0, 10))}</span>`;
@@ -558,9 +590,11 @@ function card(item, a, idx) {
       ${item.paid ? `<span>Paid <span class="mono">${money(item.paid)}</span>${item.date ? ` on ${shortDate(item.date)}` : ""}</span>` : item.date ? `<span>Bought ${shortDate(item.date)}</span>` : ""}
     </div>
     <div class="foot"><span style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">${chip}${win}</span>
-      <span class="acts">${a.kind === "due" ? `<button class="btn small" type="button" data-claim="${idx}">Mark claimed</button>` : ""}
+      <span class="acts"><button class="x" type="button" data-chart="${esc(item.item)}" aria-expanded="${openCharts.has(String(item.item))}">History</button>
+      ${a.kind === "due" ? `<button class="btn small" type="button" data-claim="${idx}">Mark claimed</button>` : ""}
       ${a.kind === "claimed" ? `<button class="x" type="button" data-unclaim="${idx}">Not claimed</button>` : ""}
       <button class="x" type="button" data-remove="${idx}" aria-label="Remove ${esc(a.name)}">Remove</button></span></div>
+    ${openCharts.has(String(item.item)) ? chart(item, a) : ""}
   </li>`;
 }
 
@@ -677,6 +711,13 @@ async function setClaimed(idx, on) {
   catch (err) { $("checked").textContent = err.message; }
   render();
 }
+["dueList", "watchList", "pastList", "claimedList"].forEach(id => $(id).addEventListener("click", e => {
+  const h = e.target.closest("[data-chart]");
+  if (!h) return;
+  const k = h.dataset.chart;
+  openCharts.has(k) ? openCharts.delete(k) : openCharts.add(k);
+  render();
+}));
 ["dueList", "claimedList"].forEach(id => $(id).addEventListener("click", e => {
   const c = e.target.closest("[data-claim]"), u = e.target.closest("[data-unclaim]");
   if (c) setClaimed(+c.dataset.claim, true);

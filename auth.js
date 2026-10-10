@@ -239,6 +239,17 @@
       if (error) throw error;
     }
   }
+  // Daily prices the scheduled check saved for these items at this store: {item: [{date, price}]}.
+  async function loadHistory(warehouse, items) {
+    if (!items.length) return {};
+    const { data, error } = await client.from("price_history").select("item, checked_on, price")
+      .eq("warehouse", String(warehouse)).in("item", items.map(String)).order("checked_on");
+    if (error) return {};
+    const out = {};
+    for (const r of data) (out[r.item] ||= []).push({ date: r.checked_on, price: Number(r.price) });
+    return out;
+  }
+
   // Profile: store and email preference. Falls back to the store alone if the newer columns aren't in the database yet.
   async function loadProfile() {
     let { data, error } = await client.from("profiles").select("warehouse, warehouse_name, email_alerts").maybeSingle();
@@ -255,5 +266,5 @@
     if (error) throw error;
   }
 
-  window.Cloud = { enabled, start, loadItems, saveItems, loadProfile, saveProfile };
+  window.Cloud = { enabled, start, loadItems, saveItems, loadProfile, saveProfile, loadHistory };
 })();
