@@ -25,3 +25,21 @@ in-store price at your warehouse. It flags when you're due a price adjustment
 Items you add are kept in your browser. To also get email alerts, paste a fine-grained GitHub token
 (this repo only, Contents: read and write) under Settings, so items are saved to the repo. It is kept in
 your browser only.
+
+## Accounts and email alerts (Supabase)
+
+With `config.js` filled in, people create an account (password, then an emailed sign-in link or code).
+Each account keeps its own items and store (picked by ZIP code under **Store & alerts**).
+
+Every 2 days `tracker/alerts.py` checks each account's items at that account's store, saves prices to
+`price_history`, and emails each person the drops they can claim (once per drop). It needs these
+repository secrets (Settings → Secrets and variables → Actions):
+
+| Secret | Value |
+| --- | --- |
+| `SUPABASE_URL` | `https://<project>.supabase.co` |
+| `SUPABASE_SERVICE_KEY` | Supabase → Project Settings → API keys → secret key (never put it in the page) |
+| `GMAIL_USER` | The Gmail address alerts are sent from |
+| `GMAIL_APP_PASSWORD` | A Google app password for that address |
+
+Run `supabase/schema.sql` again in the SQL Editor after updating; it is safe to re-run.

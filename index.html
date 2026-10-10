@@ -157,6 +157,18 @@ details.past .cards { margin-top: 10px; }
 label.f { display: grid; gap: 4px; font-size: .84rem; color: var(--muted); min-width: 0; }
 input.in { width: 100%; padding: 9px 11px; border: 1px solid var(--rule); border-radius: 10px; background: var(--surface); }
 .panel ol { margin: 0; padding-left: 20px; font-size: .9rem; color: var(--muted); }
+.zip-row { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
+.zip-row .f { flex: 1 1 160px; }
+.stores { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.stores button { width: 100%; text-align: left; display: flex; justify-content: space-between; gap: 12px; align-items: center;
+  background: var(--sunk); border: 1px solid transparent; border-radius: 10px; padding: 10px 12px; font: inherit; color: inherit; cursor: pointer; }
+.stores button:hover { border-color: var(--muted); }
+.stores button[aria-current="true"] { border-color: var(--accent); }
+.stores .addr { display: block; font-size: .85rem; color: var(--muted); }
+.stores .dist { font-size: .85rem; color: var(--muted); white-space: nowrap; }
+.by-number > summary { cursor: pointer; font-size: .9rem; }
+.check { display: flex; gap: 10px; align-items: flex-start; font-size: .95rem; }
+.check input { margin-top: 3px; width: 18px; height: 18px; accent-color: var(--accent); }
 .msg { font-size: .9rem; min-height: 1.35em; }
 .msg.err { color: var(--accent); }
 .foot-note { font-size: .82rem; color: var(--muted); text-align: center; }
@@ -322,10 +334,20 @@ input.in { width: 100%; padding: 9px 11px; border: 1px solid var(--rule); border
   <details class="panel" id="settings">
     <summary>Store &amp; alerts</summary>
     <div class="panel-body">
-      <div class="fields">
-        <label class="f">Costco warehouse number<input class="in mono" id="sWh" inputmode="numeric"></label>
-      </div>
-      <p class="muted" style="font-size:.9rem">The number is printed at the top of your receipt, next to the store name (for example, Pentagon City #233).</p>
+      <p style="margin:0">Your store: <strong id="storeName">Costco #233</strong></p>
+      <form class="zip-row" id="zipForm" autocomplete="off">
+        <label class="f">Find a store by ZIP code<input class="in mono" id="zipIn" inputmode="numeric" maxlength="5" pattern="[0-9]{5}" placeholder="22202" required></label>
+        <button class="btn" type="submit" id="zipBtn">Find stores</button>
+      </form>
+      <ul class="stores" id="storeList" hidden></ul>
+      <details class="by-number">
+        <summary class="muted">Or type the warehouse number</summary>
+        <div class="fields" style="margin-top:8px">
+          <label class="f">Costco warehouse number<input class="in mono" id="sWh" inputmode="numeric"></label>
+        </div>
+        <p class="muted" style="font-size:.9rem;margin:6px 0 0">It's printed at the top of your receipt, next to the store name (for example, Pentagon City #233).</p>
+      </details>
+      <label class="check" id="alertsRow" hidden><input type="checkbox" id="sAlerts"> Email me when something I bought drops in price (checked every 2 days)</label>
       <div id="tokenBox">
       <label class="f">GitHub token, optional (for email alerts and the same list on all your devices)<input class="in" id="sToken" type="password" placeholder="github_pat_…"></label>
       <ol>
@@ -428,7 +450,11 @@ async function loadData() {
       state.items = merged;
       store.set("localItems", "");
     }
-    state.warehouse = String(await Cloud.loadWarehouse() || store.get("warehouse") || "233");
+    const profile = await Cloud.loadProfile();
+    state.warehouse = String(profile.warehouse || store.get("warehouse") || "233");
+    state.warehouseName = profile.warehouse_name || (store.get("warehouse") === state.warehouse ? store.get("warehouseName") : "");
+    state.emailAlerts = profile.email_alerts !== false;
+    $("alertsRow").hidden = !("email_alerts" in profile);
   } else try {
     const items = await ghGet("data/items.json"); state.items = items.data; state.itemsSha = items.sha;
     if (!store.get("ghToken") && localItems()) state.items = localItems();
@@ -438,7 +464,7 @@ async function loadData() {
     state.warehouse = String((await getJSON("data/config.json").catch(() => ({}))).warehouse || "233");
   }
   const wh = store.get("warehouse");
-  if (wh && !store.get("ghToken") && !window.Cloud?.enabled) state.warehouse = wh;
+  if (wh && !store.get("ghToken") && !window.Cloud?.enabled) { state.warehouse = wh; state.warehouseName = store.get("warehouseName"); }
   state.coupons = (await getJSON("data/coupons.json").catch(() => ({}))).coupons || {};
   state.history = await getJSON("data/history.json").catch(() => ({}));
   state.lastRun = (await getJSON("data/latest.json").catch(() => ({}))).date || null;
@@ -525,7 +551,10 @@ function card(item, a, idx) {
 }
 
 function render() {
-  $("storeLabel").textContent = `Costco #${state.warehouse}`;
+  const storeText = state.warehouseName ? `${state.warehouseName} #${state.warehouse}` : `Costco #${state.warehouse}`;
+  $("storeLabel").textContent = storeText;
+  $("storeName").textContent = storeText;
+  $("sAlerts").checked = state.emailAlerts !== false;
   $("storeBtn").classList.toggle("offline", !state.liveOk);
   $("sWh").value = state.warehouse;
   $("sToken").value = store.get("ghToken");
@@ -579,7 +608,7 @@ async function refresh() {
   render();
 }
 $("refresh").addEventListener("click", refresh);
-$("storeBtn").addEventListener("click", () => { $("settings").open = true; $("sWh").focus(); });
+$("storeBtn").addEventListener("click", () => { $("settings").open = true; $("zipIn").focus(); });
 
 // Manual add
 $("addForm").addEventListener("submit", async e => {
@@ -635,13 +664,15 @@ $("saveSettings").addEventListener("click", async () => {
   try {
     if (wh && wh !== state.warehouse) {
       if (!/^\d{1,5}$/.test(wh)) throw new Error("The warehouse number is digits only, like 233.");
-      if (window.Cloud?.enabled) await Cloud.saveWarehouse(wh);
+      if (window.Cloud?.enabled) await Cloud.saveProfile({ warehouse: wh, warehouse_name: null });
       else if (store.get("ghToken")) {
         if (!state.configSha) state.configSha = (await ghGet("data/config.json")).sha;
         state.configSha = await ghPut("data/config.json", { warehouse: wh }, state.configSha, `Use warehouse ${wh}`);
       }
       store.set("warehouse", wh);
+      store.set("warehouseName", "");
       state.warehouse = wh;
+      state.warehouseName = "";
     }
     if (store.get("ghToken") && !window.Cloud?.enabled) {
       const local = localItems();
@@ -654,6 +685,74 @@ $("saveSettings").addEventListener("click", async () => {
     msg.textContent = store.get("ghToken") && !window.Cloud?.enabled ? "Saved. Email alerts are on." : "Saved.";
     refresh();
   } catch (err) { msg.className = "msg err"; msg.textContent = err.message; }
+});
+
+// Store picker: ZIP code -> nearest Costco warehouses.
+const LOCATOR = "https://ecom-api.costco.com/core/warehouse-locator/v1/warehouses.json";
+const LOCATOR_HEADERS = { "client-identifier": "7c71124c-7bf1-44db-bc9d-498584cd66e5" };
+const titleCase = t => String(t || "").toLowerCase().replace(/\b[a-z]/g, c => c.toUpperCase());
+let nearby = [];
+
+$("zipForm").addEventListener("submit", async e => {
+  e.preventDefault();
+  const zip = $("zipIn").value.trim();
+  const msg = $("setMsg"), list = $("storeList");
+  msg.className = "msg";
+  if (!/^\d{5}$/.test(zip)) { msg.className = "msg err"; msg.textContent = "Enter a 5-digit ZIP code."; return; }
+  $("zipBtn").disabled = true;
+  msg.textContent = "Looking up stores…";
+  try {
+    const places = await (await fetch(`https://geocodeservice.costco.com/Locations?q=${zip}`)).json();
+    const place = (places || []).find(p => p.postalCode === zip) || (places || [])[0];
+    if (!place) throw new Error(`Couldn't find ZIP code ${zip}.`);
+    const res = await fetch(`${LOCATOR}?latitude=${place.latitude}&longitude=${place.longitude}&limit=10`, { headers: LOCATOR_HEADERS });
+    if (!res.ok) throw new Error(`Costco's store finder didn't answer (${res.status}). Type the warehouse number instead.`);
+    nearby = ((await res.json()).warehouses || [])
+      .filter(w => (w.type?.code || "Warehouse") === "Warehouse")
+      .slice(0, 6)
+      .map(w => ({ id: String(w.warehouseId), name: w.name?.[0]?.value || `Costco #${w.warehouseId}`,
+                   addr: `${titleCase(w.address?.line1)}, ${titleCase(w.address?.city)}, ${w.address?.territory || ""}`,
+                   miles: w.distance }));
+    if (!nearby.length) throw new Error(`No Costco warehouses near ${zip}.`);
+    list.innerHTML = nearby.map((w, i) => `<li><button type="button" data-store="${i}" aria-current="${w.id === state.warehouse}">
+      <span><strong>${esc(w.name)}</strong> <span class="mono muted">#${esc(w.id)}</span><span class="addr">${esc(w.addr)}</span></span>
+      <span class="dist">${w.miles == null ? "" : `${w.miles < 10 ? w.miles.toFixed(1) : Math.round(w.miles)} mi`}</span></button></li>`).join("");
+    list.hidden = false;
+    msg.textContent = `Stores near ${titleCase(place.city)}, ${place.stateProvinceAbbreviation}. Tap yours.`;
+  } catch (err) { msg.className = "msg err"; msg.textContent = err.message === "Failed to fetch" ? "Couldn't reach Costco's store finder. Type the warehouse number instead." : err.message; }
+  $("zipBtn").disabled = false;
+});
+
+$("storeList").addEventListener("click", async e => {
+  const b = e.target.closest("[data-store]");
+  if (!b) return;
+  const w = nearby[Number(b.dataset.store)];
+  const msg = $("setMsg");
+  msg.className = "msg";
+  try {
+    if (window.Cloud?.enabled) await Cloud.saveProfile({ warehouse: w.id, warehouse_name: w.name });
+    else if (store.get("ghToken")) {
+      if (!state.configSha) state.configSha = (await ghGet("data/config.json")).sha;
+      state.configSha = await ghPut("data/config.json", { warehouse: w.id }, state.configSha, `Use warehouse ${w.id}`);
+    }
+    store.set("warehouse", w.id);
+    store.set("warehouseName", w.name);
+    state.warehouse = w.id;
+    state.warehouseName = w.name;
+    $("storeList").querySelectorAll("[data-store]").forEach(x => x.setAttribute("aria-current", String(x === b)));
+    msg.textContent = `Saved. Prices now come from ${w.name} #${w.id}.`;
+    refresh();
+  } catch (err) { msg.className = "msg err"; msg.textContent = err.message; }
+});
+
+$("sAlerts").addEventListener("change", async e => {
+  const msg = $("setMsg"), on = e.target.checked;
+  msg.className = "msg";
+  try {
+    await Cloud.saveProfile({ email_alerts: on });
+    state.emailAlerts = on;
+    msg.textContent = on ? "Email alerts are on." : "Email alerts are off.";
+  } catch (err) { e.target.checked = !on; msg.className = "msg err"; msg.textContent = err.message; }
 });
 
 // Receipt upload: parse PDFs, show a review list, then save the ticked rows.

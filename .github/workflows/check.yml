@@ -38,6 +38,15 @@ jobs:
           git pull --rebase origin main
           git push
 
+      - name: Email each account its drops
+        if: ${{ !cancelled() }}
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+        run: python tracker/alerts.py
+
       - name: Open an issue for drops
         if: hashFiles('alert.md') != ''
         env:

@@ -237,14 +237,21 @@
       if (error) throw error;
     }
   }
-  async function loadWarehouse() {
-    const { data } = await client.from("profiles").select("warehouse").maybeSingle();
-    return data?.warehouse || null;
+  // Profile: store and email preference. Falls back to the store alone if the newer columns aren't in the database yet.
+  async function loadProfile() {
+    let { data, error } = await client.from("profiles").select("warehouse, warehouse_name, email_alerts").maybeSingle();
+    if (error) ({ data } = await client.from("profiles").select("warehouse").maybeSingle());
+    return data || {};
   }
-  async function saveWarehouse(warehouse) {
-    const { error } = await client.from("profiles").upsert({ warehouse, updated_at: new Date().toISOString() });
+  async function saveProfile(patch) {
+    const row = { ...patch, updated_at: new Date().toISOString() };
+    let { error } = await client.from("profiles").upsert(row);
+    if (error && /column/i.test(error.message)) {
+      if (!("warehouse" in patch) || "email_alerts" in patch) throw new Error("Email settings need the latest database update (run supabase/schema.sql again).");
+      ({ error } = await client.from("profiles").upsert({ warehouse: patch.warehouse, updated_at: row.updated_at }));
+    }
     if (error) throw error;
   }
 
-  window.Cloud = { enabled, start, loadItems, saveItems, loadWarehouse, saveWarehouse };
+  window.Cloud = { enabled, start, loadItems, saveItems, loadProfile, saveProfile };
 })();

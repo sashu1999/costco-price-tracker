@@ -106,3 +106,32 @@ create policy "own profile, verified session" on public.profiles
   for all to authenticated
   using (user_id = auth.uid() and public.session_verified())
   with check (user_id = auth.uid() and public.session_verified());
+
+-- ── Added for groups: store picker and per-person email alerts ──────────────
+alter table public.profiles add column if not exists warehouse_name text;
+alter table public.profiles add column if not exists email_alerts boolean not null default true;
+
+-- Daily in-store price per warehouse, written by the scheduled check. Prices are
+-- public information, so any signed-in user may read them.
+create table if not exists public.price_history (
+  warehouse  text not null,
+  item       text not null,
+  checked_on date not null,
+  price      numeric(10,2) not null,
+  primary key (warehouse, item, checked_on)
+);
+alter table public.price_history enable row level security;
+drop policy if exists "signed-in users read prices" on public.price_history;
+create policy "signed-in users read prices" on public.price_history
+  for select to authenticated using (public.session_verified());
+
+-- Which drops each person was already emailed about, so an alert goes out once per price.
+create table if not exists private_alerts_sent (
+  user_id uuid not null,
+  item    text not null,
+  price   numeric(10,2) not null,
+  sent_at timestamptz not null default now(),
+  primary key (user_id, item, price)
+);
+alter table private_alerts_sent enable row level security;
+revoke all on private_alerts_sent from anon, authenticated;
