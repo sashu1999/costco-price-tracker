@@ -161,6 +161,19 @@ input.in { width: 100%; padding: 9px 11px; border: 1px solid var(--rule); border
 .msg.err { color: var(--accent); }
 .foot-note { font-size: .82rem; color: var(--muted); text-align: center; }
 
+/* Sign-in screens */
+.auth { max-width: 400px; margin: 6vh auto 0; display: grid; gap: 18px; }
+.auth .brand { font-size: 1.5rem; }
+.auth-card { background: var(--surface); border-radius: 16px; box-shadow: var(--shadow); padding: 22px 20px; display: grid; gap: 14px; }
+.auth-card h1 { font-size: 1.25rem; }
+.auth-card form { display: grid; gap: 12px; }
+.auth-card .btn.primary { width: 100%; padding: 11px 14px; }
+.auth-links { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; font-size: .92rem; }
+.code-in { font-size: 1.6rem; letter-spacing: .45em; text-align: center; }
+.steps { display: flex; gap: 8px; font-size: .8rem; color: var(--muted); }
+.steps b { color: var(--ink); }
+.account { display: flex; align-items: center; gap: 10px; font-size: .88rem; color: var(--muted); flex-wrap: wrap; }
+
 /* Undo toast */
 .toast {
   position: fixed; left: 50%; bottom: max(18px, env(safe-area-inset-bottom)); transform: translateX(-50%);
@@ -176,9 +189,68 @@ input.in { width: 100%; padding: 9px 11px; border: 1px solid var(--rule); border
 </style>
 </head>
 <body>
-<main>
+<main class="auth" id="auth" hidden>
+  <span class="brand">Price Adjust</span>
+  <div class="auth-card">
+    <div id="vSignIn" hidden>
+      <form id="fSignIn" autocomplete="on">
+        <p class="steps"><b>1. Password</b><span>→</span><span>2. Email code</span></p>
+        <h1>Sign in</h1>
+        <label class="f">Email<input class="in" id="siEmail" type="email" autocomplete="username" required></label>
+        <label class="f">Password<input class="in" id="siPassword" type="password" autocomplete="current-password" required></label>
+        <button class="btn primary" type="submit">Continue</button>
+      </form>
+      <div class="auth-links" style="margin-top:12px">
+        <button class="link" type="button" data-view="vSignUp">Create an account</button>
+        <button class="link" type="button" data-view="vForgot">Forgot password?</button>
+      </div>
+    </div>
+    <div id="vCode" hidden>
+      <form id="fCode" autocomplete="one-time-code">
+        <p class="steps"><span>1. Password</span><span>→</span><b>2. Email code</b></p>
+        <h1>Check your email</h1>
+        <p class="muted">Enter the 6-digit code we sent to <strong id="codeEmail"></strong>. It expires in an hour.</p>
+        <label class="f">Code<input class="in mono code-in" id="codeInput" inputmode="numeric" autocomplete="one-time-code" maxlength="10" required></label>
+        <button class="btn primary" type="submit">Verify and sign in</button>
+      </form>
+      <div class="auth-links" style="margin-top:12px">
+        <button class="link" type="button" id="resendCode" disabled>Send a new code</button>
+        <button class="link" type="button" data-view="vSignIn">Start over</button>
+      </div>
+    </div>
+    <div id="vSignUp" hidden>
+      <form id="fSignUp">
+        <h1>Create an account</h1>
+        <label class="f">Email<input class="in" id="suEmail" type="email" autocomplete="email" required></label>
+        <label class="f">Password (at least 8 characters)<input class="in" id="suPassword" type="password" autocomplete="new-password" minlength="8" required></label>
+        <label class="f">Password again<input class="in" id="suPassword2" type="password" autocomplete="new-password" required></label>
+        <button class="btn primary" type="submit">Create account</button>
+        <p class="muted" style="font-size:.88rem">Each sign-in asks for your password and then a code sent to this email.</p>
+      </form>
+      <div class="auth-links" style="margin-top:12px"><button class="link" type="button" data-view="vSignIn">I already have an account</button></div>
+    </div>
+    <div id="vForgot" hidden>
+      <form id="fForgot">
+        <h1>Reset your password</h1>
+        <label class="f">Email<input class="in" id="fpEmail" type="email" autocomplete="email" required></label>
+        <button class="btn primary" type="submit">Email me a reset link</button>
+      </form>
+      <div class="auth-links" style="margin-top:12px"><button class="link" type="button" data-view="vSignIn">Back to sign in</button></div>
+    </div>
+    <div id="vNewPw" hidden>
+      <form id="fNewPw">
+        <h1>Choose a new password</h1>
+        <label class="f">New password (at least 8 characters)<input class="in" id="npPassword" type="password" autocomplete="new-password" minlength="8" required></label>
+        <button class="btn primary" type="submit">Save password</button>
+      </form>
+    </div>
+    <p class="msg" id="authMsg" role="status" aria-live="polite"></p>
+  </div>
+</main>
+<main id="app">
   <div class="top">
     <span class="brand">Price Adjust</span>
+    <span class="account" id="accountBar" hidden><span id="accountEmail"></span><button class="link" type="button" id="signOut">Sign out</button></span>
     <button class="store" id="storeBtn" type="button" title="Change store">
       <span class="dot" aria-hidden="true"></span><span id="storeLabel">Costco #233</span>
     </button>
@@ -254,12 +326,14 @@ input.in { width: 100%; padding: 9px 11px; border: 1px solid var(--rule); border
         <label class="f">Costco warehouse number<input class="in mono" id="sWh" inputmode="numeric"></label>
       </div>
       <p class="muted" style="font-size:.9rem">The number is printed at the top of your receipt, next to the store name (for example, Pentagon City #233).</p>
+      <div id="tokenBox">
       <label class="f">GitHub token, optional (for email alerts and the same list on all your devices)<input class="in" id="sToken" type="password" placeholder="github_pat_…"></label>
       <ol>
         <li>Open <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">GitHub → Fine-grained tokens</a>.</li>
         <li>Repository access: only <span class="mono" id="repoName">this repo</span>. Permissions: Contents → Read and write.</li>
         <li>Paste it here. It stays in this browser. Your items are copied to the repo so the 2-day check can email you.</li>
       </ol>
+      </div>
       <div><button class="btn" type="button" id="saveSettings">Save</button></div>
       <p class="msg" id="setMsg" role="status"></p>
     </div>
@@ -274,6 +348,9 @@ input.in { width: 100%; padding: 9px 11px; border: 1px solid var(--rule); border
 if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
 </script>
 <script src="receipt.js"></script>
+<script src="config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="auth.js"></script>
 <script>
 const API = "https://gdx-api.costco.com/catalog/product/product-api/v2/products/summary";
 const CLIENT_ID = "4900eb1f-0c10-4bd9-99c3-c59e6c1ecebf";
@@ -333,6 +410,7 @@ async function ghPut(path, data, sha, message) {
 // so the scheduled check (and its email alerts) can see it.
 function localItems() { try { return JSON.parse(store.get("localItems") || "null"); } catch { return null; } }
 async function saveItems(next, message) {
+  if (window.Cloud?.enabled) { await Cloud.saveItems(next, state.items); state.items = next; return "account"; }
   if (!store.get("ghToken")) { store.set("localItems", JSON.stringify(next)); state.items = next; return "browser"; }
   state.itemsSha = await ghPut("data/items.json", next, state.itemsSha, message);
   state.items = next;
@@ -341,7 +419,17 @@ async function saveItems(next, message) {
 }
 
 async function loadData() {
-  try {
+  if (window.Cloud?.enabled) {
+    state.items = await Cloud.loadItems();
+    const local = localItems();
+    if (local && local.length) {   // first sign-in on this browser: move items saved here into the account
+      const merged = [...state.items.filter(r => !local.some(l => String(l.item) === String(r.item))), ...local];
+      await Cloud.saveItems(merged, state.items);
+      state.items = merged;
+      store.set("localItems", "");
+    }
+    state.warehouse = String(await Cloud.loadWarehouse() || store.get("warehouse") || "233");
+  } else try {
     const items = await ghGet("data/items.json"); state.items = items.data; state.itemsSha = items.sha;
     if (!store.get("ghToken") && localItems()) state.items = localItems();
     const cfg = await ghGet("data/config.json"); state.warehouse = String(cfg.data.warehouse); state.configSha = cfg.sha;
@@ -350,7 +438,7 @@ async function loadData() {
     state.warehouse = String((await getJSON("data/config.json").catch(() => ({}))).warehouse || "233");
   }
   const wh = store.get("warehouse");
-  if (wh && !store.get("ghToken")) state.warehouse = wh;
+  if (wh && !store.get("ghToken") && !window.Cloud?.enabled) state.warehouse = wh;
   state.coupons = (await getJSON("data/coupons.json").catch(() => ({}))).coupons || {};
   state.history = await getJSON("data/history.json").catch(() => ({}));
   state.lastRun = (await getJSON("data/latest.json").catch(() => ({}))).date || null;
@@ -547,14 +635,15 @@ $("saveSettings").addEventListener("click", async () => {
   try {
     if (wh && wh !== state.warehouse) {
       if (!/^\d{1,5}$/.test(wh)) throw new Error("The warehouse number is digits only, like 233.");
-      if (store.get("ghToken")) {
+      if (window.Cloud?.enabled) await Cloud.saveWarehouse(wh);
+      else if (store.get("ghToken")) {
         if (!state.configSha) state.configSha = (await ghGet("data/config.json")).sha;
         state.configSha = await ghPut("data/config.json", { warehouse: wh }, state.configSha, `Use warehouse ${wh}`);
       }
       store.set("warehouse", wh);
       state.warehouse = wh;
     }
-    if (store.get("ghToken")) {
+    if (store.get("ghToken") && !window.Cloud?.enabled) {
       const local = localItems();
       const remote = await ghGet("data/items.json"); state.itemsSha = remote.sha;
       if (local) {
@@ -562,7 +651,7 @@ $("saveSettings").addEventListener("click", async () => {
         await saveItems(merged, "Add items saved in the browser");
       } else state.items = remote.data;
     }
-    msg.textContent = store.get("ghToken") ? "Saved. Email alerts are on." : "Saved.";
+    msg.textContent = store.get("ghToken") && !window.Cloud?.enabled ? "Saved. Email alerts are on." : "Saved.";
     refresh();
   } catch (err) { msg.className = "msg err"; msg.textContent = err.message; }
 });
@@ -643,7 +732,17 @@ $("reviewAdd").addEventListener("click", async () => {
   } catch (err) { msg.className = "msg err"; msg.textContent = err.message; $("reviewAdd").disabled = false; }
 });
 
-loadData().then(() => { render(); refresh(); });
+if (window.Cloud?.enabled) {
+  $("tokenBox").hidden = true;
+  $("accountBar").hidden = false;
+  $("app").hidden = true;
+  Cloud.start(async () => {
+    try { await loadData(); } catch (err) { $("checked").textContent = `Couldn't load your items (${err.message}).`; }
+    render(); refresh();
+  });
+} else {
+  loadData().then(() => { render(); refresh(); });
+}
 </script>
 </body>
 </html>
