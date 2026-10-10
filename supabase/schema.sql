@@ -151,3 +151,77 @@ create table if not exists private_reminders_sent (
 );
 alter table private_reminders_sent enable row level security;
 revoke all on private_reminders_sent from anon, authenticated;
+
+-- ── Security hardening ──────────────────────────────────────────────────────
+-- Only signed-in users talk to these tables, and only through what the app needs.
+revoke all on public.items, public.profiles, public.price_history from anon;
+revoke all on public.items, public.profiles, public.price_history from authenticated;
+grant select, insert, update, delete on public.items, public.profiles to authenticated;
+grant select on public.price_history to authenticated;
+
+create or replace function public.session_amr_has(method text) returns boolean
+language sql stable set search_path = '' as $$
+  select exists (
+    select 1 from jsonb_array_elements(coalesce(auth.jwt() -> 'amr', '[]'::jsonb)) a
+    where a ->> 'method' = method
+  );
+$$;
+
+-- Sane sizes, so nobody can stuff the database or feed odd values to the daily check.
+alter table public.items drop constraint if exists items_sane;
+alter table public.items add constraint items_sane check (
+  length(name) <= 200 and length(note) <= 500
+  and (warehouse is null or warehouse ~ '^[0-9]{1,5}$')
+  and (paid is null or paid between 0 and 100000)
+  and (claimed_amount is null or claimed_amount between 0 and 100000));
+alter table public.profiles drop constraint if exists profiles_sane;
+alter table public.profiles add constraint profiles_sane check (
+  warehouse ~ '^[0-9]{1,5}$' and length(warehouse_name) <= 100);
+
+-- At most 500 items per account.
+create or replace function public.items_limit() returns trigger
+language plpgsql security definer set search_path = '' as $$
+begin
+  if (select count(*) from public.items where user_id = new.user_id) >= 500 then
+    raise exception 'You can track up to 500 items. Remove some first.';
+  end if;
+  return new;
+end $$;
+revoke all on function public.items_limit() from public, anon, authenticated;
+drop trigger if exists items_limit on public.items;
+create trigger items_limit before insert on public.items for each row execute function public.items_limit();
+
+-- Keep the step-1 and verified-session tables from growing forever.
+create or replace function public.password_checked() returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if auth.uid() is null or not public.session_amr_has('password') then
+    raise exception 'Sign in with your password first';
+  end if;
+  delete from private_password_checks where checked_at < now() - interval '10 minutes';
+  insert into private_password_checks (user_id) values (auth.uid());
+end $$;
+
+create or replace function public.verify_session() returns boolean
+language plpgsql security definer set search_path = public as $$
+declare ok boolean;
+begin
+  if auth.uid() is null or not (public.session_amr_has('otp') or public.session_amr_has('magiclink')) then
+    raise exception 'Enter the emailed code first';
+  end if;
+  select exists (
+    select 1 from private_password_checks
+    where user_id = auth.uid() and checked_at > now() - interval '10 minutes'
+  ) into ok;
+  if not ok then
+    raise exception 'Your password check expired. Start the sign-in again.';
+  end if;
+  delete from private_password_checks where user_id = auth.uid();
+  delete from private_verified_sessions v where not exists (select 1 from auth.sessions s where s.id = v.session_id);
+  insert into private_verified_sessions (session_id, user_id)
+  values ((auth.jwt() ->> 'session_id')::uuid, auth.uid())
+  on conflict (session_id) do nothing;
+  return true;
+end $$;
+revoke all on function public.password_checked(), public.verify_session() from public, anon;
+grant execute on function public.password_checked(), public.verify_session() to authenticated;
