@@ -4,174 +4,270 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Price Adjust Tracker</title>
+<meta name="theme-color" content="#f6f7f5">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
 <style>
-/* Layout: one narrow receipt-like column. Summary line, item list, add form, settings at the bottom. */
+/* Layout: one column, phone-first. Refund summary on top, receipt drop zone, then items grouped by what you can do with them. */
 :root {
-  --paper: #fbfbf9;
+  --paper: #f6f7f5;
   --surface: #ffffff;
-  --ink: #1d2126;
-  --muted: #646b73;
-  --rule: #dde0e3;
-  --accent: #b3261e;      /* receipt-red: actions and focus */
-  --good: #1f7a45;        /* money back */
-  --good-bg: #e5f3ea;
+  --sunk: #eef0ec;
+  --ink: #1b1f23;
+  --muted: #5f666d;
+  --rule: #dfe2de;
+  --accent: #b3261e;
+  --on-accent: #ffffff;
+  --good: #17703f;
+  --good-bg: #e3f2e8;
+  --good-strong: #1e8a4f;
   --warn: #8a5a00;
   --warn-bg: #fbf0d9;
-  --on-accent: #ffffff;
+  --shadow: 0 1px 2px rgba(20, 30, 25, .06), 0 4px 16px rgba(20, 30, 25, .05);
   --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-data: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --paper: #15181b; --surface: #1d2125; --ink: #e8eaec; --muted: #9aa1a8; --rule: #30353a;
-    --accent: #ff7a6e; --good: #6fd39a; --good-bg: #173325; --warn: #f0c46a; --warn-bg: #3a2f17; --on-accent: #15181b;
+    --paper: #131618; --surface: #1c2023; --sunk: #171a1c; --ink: #e9ebec; --muted: #9ba2a8; --rule: #2e3337;
+    --accent: #ff7a6e; --on-accent: #1a1012; --good: #7fdca6; --good-bg: #16301f; --good-strong: #3fb877;
+    --warn: #f0c46a; --warn-bg: #3a2f17; --shadow: 0 1px 2px rgba(0,0,0,.3);
     color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
-  --paper: #15181b; --surface: #1d2125; --ink: #e8eaec; --muted: #9aa1a8; --rule: #30353a;
-  --accent: #ff7a6e; --good: #6fd39a; --good-bg: #173325; --warn: #f0c46a; --warn-bg: #3a2f17; --on-accent: #15181b;
+  --paper: #131618; --surface: #1c2023; --sunk: #171a1c; --ink: #e9ebec; --muted: #9ba2a8; --rule: #2e3337;
+  --accent: #ff7a6e; --on-accent: #1a1012; --good: #7fdca6; --good-bg: #16301f; --good-strong: #3fb877;
+  --warn: #f0c46a; --warn-bg: #3a2f17; --shadow: 0 1px 2px rgba(0,0,0,.3);
   color-scheme: dark;
 }
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 html, body { margin: 0; }
 body {
   background: var(--paper); color: var(--ink);
-  font: 15px/1.5 var(--font-body);
-  padding: max(16px, env(safe-area-inset-top)) 16px max(32px, env(safe-area-inset-bottom));
+  font: 16px/1.5 var(--font-body);
+  padding: max(14px, env(safe-area-inset-top)) 16px max(40px, env(safe-area-inset-bottom));
 }
-main { max-width: 640px; margin: 0 auto; display: grid; gap: 28px; }
-h1 { font-size: 1.5rem; margin: 0; text-wrap: balance; font-weight: 600; }
-h2 { font-size: .78rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0 0 10px; font-weight: 600; }
+main { max-width: 620px; margin: 0 auto; display: grid; gap: 22px; }
+h1, h2, h3, p { margin: 0; }
+h2 { font-size: .8rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600; }
 .mono { font-family: var(--font-data); font-variant-numeric: tabular-nums; }
 .muted { color: var(--muted); }
-header { display: grid; gap: 6px; }
-.where { display: flex; flex-wrap: wrap; gap: 6px 14px; color: var(--muted); font-size: .9rem; align-items: center; }
-.summary { font-size: 1rem; }
-.summary strong { color: var(--good); }
-
 button, input { font: inherit; color: inherit; }
-button {
-  border: 1px solid var(--rule); background: var(--surface); border-radius: 8px;
-  padding: 7px 12px; cursor: pointer;
-}
-button:hover { border-color: var(--muted); }
-button.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 500; }
-button.link { border: 0; background: none; padding: 0; color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
-button:disabled { opacity: .55; cursor: default; }
+button { cursor: pointer; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-input {
-  width: 100%; padding: 8px 10px; border: 1px solid var(--rule); border-radius: 8px; background: var(--surface);
+.btn {
+  border: 1px solid var(--rule); background: var(--surface); border-radius: 10px;
+  padding: 9px 14px; font-weight: 500;
 }
-label { display: grid; gap: 4px; font-size: .82rem; color: var(--muted); min-width: 0; }
+.btn:hover { border-color: var(--muted); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.btn:disabled { opacity: .55; cursor: default; }
+.link { border: 0; background: none; padding: 0; color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
 
-.list { list-style: none; margin: 0; padding: 0; border-top: 1px dashed var(--rule); }
-.row {
-  display: grid; grid-template-columns: 1fr auto; gap: 4px 16px;
-  padding: 14px 0; border-bottom: 1px dashed var(--rule);
+/* Top bar */
+.top { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.brand { font-weight: 700; font-size: 1.15rem; letter-spacing: -.01em; }
+.store {
+  display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--rule); background: var(--surface);
+  border-radius: 999px; padding: 4px 12px; font-size: .88rem;
 }
-.row .name { font-weight: 500; min-width: 0; overflow-wrap: anywhere; }
-.row .meta { grid-column: 1; font-size: .82rem; color: var(--muted); display: flex; flex-wrap: wrap; gap: 2px 12px; }
-.row .price { grid-row: 1 / span 2; grid-column: 2; text-align: right; display: grid; align-content: start; justify-items: end; gap: 4px; }
-.row .price .now { font-size: 1.15rem; font-weight: 600; }
-.row .actions { grid-column: 1 / -1; display: flex; gap: 12px; align-items: center; font-size: .85rem; }
-.chip { display: inline-block; border-radius: 999px; padding: 1px 9px; font-size: .78rem; font-weight: 500; white-space: nowrap; }
+.store .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--good-strong); }
+.store.offline .dot { background: var(--warn); }
+
+/* Refund summary */
+.hero { background: var(--surface); border-radius: 16px; box-shadow: var(--shadow); padding: 20px; display: grid; gap: 14px; }
+.hero.due { background: var(--good-bg); box-shadow: none; }
+.hero .kicker { font-size: .9rem; color: var(--muted); }
+.hero.due .kicker { color: var(--good); }
+.hero .big { font-size: 2.6rem; font-weight: 700; line-height: 1.05; letter-spacing: -.02em; }
+.hero.due .big { color: var(--good); }
+.hero .sub { color: var(--muted); font-size: .95rem; text-wrap: pretty; }
+.claims { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.claims li { display: flex; justify-content: space-between; gap: 12px; font-size: .95rem; }
+.claims .what { min-width: 0; overflow-wrap: anywhere; }
+.claims .left { white-space: nowrap; font-weight: 600; }
+.claims .urgent { color: var(--accent); }
+
+/* Receipt drop zone */
+.drop {
+  position: relative; border: 2px dashed var(--rule); border-radius: 16px; background: var(--surface);
+  padding: 22px 18px; display: grid; gap: 6px; justify-items: center; text-align: center;
+}
+.drop.over { border-color: var(--accent); background: var(--sunk); }
+.drop input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; }
+.drop .icon { width: 34px; height: 34px; color: var(--accent); }
+.drop .title { font-weight: 600; }
+.drop .hint { font-size: .88rem; color: var(--muted); }
+.help { font-size: .9rem; }
+.help summary { cursor: pointer; color: var(--muted); }
+.help ol { margin: 8px 0 0; padding-left: 20px; color: var(--muted); display: grid; gap: 2px; }
+
+/* Review sheet */
+.sheet { background: var(--surface); border-radius: 16px; box-shadow: var(--shadow); padding: 16px; display: grid; gap: 12px; }
+.sheet-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.sheet-head h3 { font-size: 1.05rem; }
+.picks { list-style: none; margin: 0; padding: 0; display: grid; }
+.pick { display: grid; grid-template-columns: auto 1fr auto; gap: 4px 12px; align-items: start; padding: 10px 0; border-top: 1px solid var(--rule); }
+.pick input { width: 20px; height: 20px; margin: 2px 0 0; accent-color: var(--accent); }
+.pick label { min-width: 0; overflow-wrap: anywhere; cursor: pointer; }
+.pick .why { display: block; font-size: .82rem; color: var(--muted); }
+.pick .amt { text-align: right; white-space: nowrap; }
+.sheet-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+
+/* Item groups and cards */
+.group { display: grid; gap: 10px; }
+.group-head { display: flex; justify-content: space-between; align-items: baseline; }
+.cards { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.card {
+  background: var(--surface); border-radius: 14px; box-shadow: var(--shadow); padding: 14px 16px;
+  display: grid; grid-template-columns: 1fr auto; gap: 6px 14px;
+}
+.card .name { font-weight: 600; min-width: 0; overflow-wrap: anywhere; line-height: 1.3; }
+.card .sub { grid-column: 1; font-size: .85rem; color: var(--muted); display: flex; flex-wrap: wrap; gap: 0 10px; }
+.card .now { grid-column: 2; grid-row: 1 / span 2; text-align: right; display: grid; justify-items: end; align-content: start; gap: 2px; }
+.card .now .price { font-size: 1.2rem; font-weight: 600; }
+.card .now .was { font-size: .82rem; color: var(--muted); }
+.card .foot { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-top: 4px; }
+.chip { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 3px 10px; font-size: .82rem; font-weight: 600; }
 .chip.good { background: var(--good-bg); color: var(--good); }
 .chip.warn { background: var(--warn-bg); color: var(--warn); }
-.chip.plain { border: 1px solid var(--rule); color: var(--muted); }
-.spark { width: 84px; height: 22px; display: block; }
-.spark path { fill: none; stroke: var(--muted); stroke-width: 1.5; }
-.spark circle { fill: var(--accent); }
+.chip.plain { background: var(--sunk); color: var(--muted); font-weight: 500; }
+.window { display: flex; align-items: center; gap: 8px; font-size: .8rem; color: var(--muted); }
+.bar { width: 70px; height: 5px; border-radius: 3px; background: var(--sunk); overflow: hidden; }
+.bar i { display: block; height: 100%; background: var(--good-strong); }
+.bar.late i { background: var(--accent); }
+.x { border: 0; background: none; color: var(--muted); padding: 4px 6px; border-radius: 6px; font-size: .85rem; }
+.x:hover { color: var(--accent); background: var(--sunk); }
+.empty { background: var(--surface); border-radius: 14px; padding: 18px; color: var(--muted); text-align: center; }
+details.past > summary { cursor: pointer; list-style: none; }
+details.past > summary::-webkit-details-marker { display: none; }
+details.past > summary h2::after { content: " ▸"; }
+details.past[open] > summary h2::after { content: " ▾"; }
+details.past .cards { margin-top: 10px; }
 
-.empty { padding: 20px 0; color: var(--muted); border-bottom: 1px dashed var(--rule); }
-form.add { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; align-items: end; }
-form.add .full { grid-column: 1 / -1; }
-.note { font-size: .85rem; color: var(--muted); margin: 8px 0 0; }
-.msg { font-size: .88rem; min-height: 1.3em; margin: 0; }
+/* Secondary panels */
+.panel { border-top: 1px solid var(--rule); padding-top: 14px; }
+.panel > summary { cursor: pointer; font-weight: 500; }
+.panel-body { display: grid; gap: 12px; margin-top: 12px; }
+.fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; align-items: end; }
+label.f { display: grid; gap: 4px; font-size: .84rem; color: var(--muted); min-width: 0; }
+input.in { width: 100%; padding: 9px 11px; border: 1px solid var(--rule); border-radius: 10px; background: var(--surface); }
+.panel ol { margin: 0; padding-left: 20px; font-size: .9rem; color: var(--muted); }
+.msg { font-size: .9rem; min-height: 1.35em; }
 .msg.err { color: var(--accent); }
-.drop { display: grid; gap: 8px; justify-items: start; }
-.review { width: 100%; border-collapse: collapse; font-size: .9rem; }
-.review th { text-align: left; font-weight: 500; color: var(--muted); font-size: .78rem; padding: 6px 8px 6px 0; border-bottom: 1px solid var(--rule); }
-.review td { padding: 7px 8px 7px 0; border-bottom: 1px dashed var(--rule); vertical-align: top; }
-.review td.num { text-align: right; white-space: nowrap; }
-.review .why { display: block; font-size: .78rem; color: var(--muted); }
-.scroll { overflow-x: auto; }
-details { border-top: 1px solid var(--rule); padding-top: 14px; }
-summary { cursor: pointer; font-weight: 500; }
-.settings { display: grid; gap: 12px; margin-top: 12px; }
-.settings ol { margin: 0; padding-left: 20px; font-size: .88rem; color: var(--muted); }
-@media (prefers-reduced-motion: no-preference) { .row { transition: background .2s; } }
+.foot-note { font-size: .82rem; color: var(--muted); text-align: center; }
+
+/* Undo toast */
+.toast {
+  position: fixed; left: 50%; bottom: max(18px, env(safe-area-inset-bottom)); transform: translateX(-50%);
+  background: var(--ink); color: var(--paper); border-radius: 12px; padding: 10px 14px;
+  display: flex; gap: 14px; align-items: center; box-shadow: var(--shadow); max-width: calc(100% - 32px); font-size: .92rem;
+}
+.toast button { background: none; border: 0; color: var(--paper); font-weight: 600; text-decoration: underline; padding: 0; }
+@media (prefers-reduced-motion: no-preference) {
+  .card, .hero { transition: background .25s; }
+  .toast { animation: rise .2s ease-out; }
+  @keyframes rise { from { transform: translate(-50%, 8px); opacity: 0; } }
+}
 </style>
 </head>
 <body>
 <main>
-  <header>
-    <h1>Price Adjust Tracker</h1>
-    <div class="where">
-      <span>Costco warehouse <span class="mono" id="whLabel">#233</span></span>
-      <span id="checked">Loading prices…</span>
-      <button class="link" id="refresh" type="button">Check now</button>
-    </div>
-    <p class="summary" id="summary"></p>
-  </header>
+  <div class="top">
+    <span class="brand">Price Adjust</span>
+    <button class="store" id="storeBtn" type="button" title="Change store">
+      <span class="dot" aria-hidden="true"></span><span id="storeLabel">Costco #233</span>
+    </button>
+  </div>
 
-  <section aria-labelledby="itemsH">
-    <h2 id="itemsH">Items you bought</h2>
-    <ul class="list" id="list"></ul>
+  <section class="hero" id="hero" aria-live="polite">
+    <p class="kicker">Checking today's prices…</p>
   </section>
 
-  <section aria-labelledby="rcptH">
-    <h2 id="rcptH">Add from receipts</h2>
-    <div class="drop">
-      <label for="rcptFile" class="muted">On costco.com go to Orders &amp; Purchases → Warehouse, open a receipt, choose Print Receipt and save it as PDF. Then pick one or more here.</label>
-      <input id="rcptFile" type="file" accept="application/pdf,.pdf" multiple>
+  <section aria-labelledby="addH" class="group">
+    <h2 id="addH">Add a receipt</h2>
+    <div class="drop" id="drop">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 2h9l5 5v15H6z"/><path d="M14 2v6h6"/><path d="M13 18v-6"/><path d="m10 15 3-3 3 3"/></svg>
+      <span class="title">Drop receipt PDFs here, or tap to choose</span>
+      <span class="hint">Read on your device. Nothing is uploaded.</span>
+      <input id="rcptFile" type="file" accept="application/pdf,.pdf" multiple aria-label="Choose receipt PDFs">
     </div>
-    <div id="review" hidden>
-      <div class="scroll"><table class="review">
-        <thead><tr><th></th><th>Item</th><th>Bought</th><th class="num">Paid</th></tr></thead>
-        <tbody id="reviewRows"></tbody>
-      </table></div>
-      <p class="note">Items older than 30 days are unticked: the price adjustment window has closed for those.</p>
-      <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:10px">
-        <button class="primary" type="button" id="reviewAdd">Add selected items</button>
-        <button type="button" id="reviewCancel">Cancel</button>
+    <details class="help">
+      <summary>How do I get a receipt PDF?</summary>
+      <ol>
+        <li>On costco.com, open <strong>Orders &amp; Purchases</strong>, then the <strong>Warehouse</strong> tab.</li>
+        <li>Open a receipt and choose <strong>Print Receipt</strong>.</li>
+        <li>In the print window, pick <strong>Save as PDF</strong>.</li>
+      </ol>
+    </details>
+    <div class="sheet" id="review" hidden>
+      <div class="sheet-head">
+        <h3 id="reviewTitle">Found items</h3>
+        <span class="muted" id="reviewCount"></span>
+      </div>
+      <ul class="picks" id="reviewRows"></ul>
+      <div class="sheet-actions">
+        <button class="btn primary" type="button" id="reviewAdd">Add items</button>
+        <button class="btn" type="button" id="reviewCancel">Cancel</button>
       </div>
     </div>
     <p class="msg" id="rcptMsg" role="status"></p>
   </section>
 
-  <section aria-labelledby="addH">
-    <h2 id="addH">Add one item by hand</h2>
-    <form class="add" id="addForm" autocomplete="off">
-      <label>Item number<input id="fItem" class="mono" inputmode="numeric" pattern="[0-9]{3,9}" required placeholder="1613453"></label>
-      <label>Price paid<input id="fPaid" class="mono" inputmode="decimal" placeholder="19.99"></label>
-      <label>Date bought<input id="fDate" type="date"></label>
-      <label class="full">Note<input id="fNote" placeholder="Optional, e.g. gift for Sam"></label>
-      <div class="full"><button class="primary" type="submit" id="addBtn">Add item</button></div>
-    </form>
-    <p class="msg" id="addMsg" role="status"></p>
-    <p class="note">Costco adjusts the price if it drops within 30 days of purchase. Prices include this month's warehouse coupons. A GitHub issue (and email) is opened when a price drops; checks run every 2 days.</p>
+  <section class="group" id="dueGroup" hidden aria-labelledby="dueH">
+    <div class="group-head"><h2 id="dueH">Claim these</h2></div>
+    <ul class="cards" id="dueList"></ul>
   </section>
 
-  <details id="settings">
-    <summary>Settings</summary>
-    <div class="settings">
-      <label>Warehouse number<input id="sWh" class="mono" inputmode="numeric"></label>
-      <label>GitHub token (optional: lets the 2-day check email you about drops)<input id="sToken" type="password" placeholder="github_pat_…"></label>
+  <section class="group" aria-labelledby="watchH">
+    <div class="group-head"><h2 id="watchH">Watching</h2><button class="link" id="refresh" type="button">Check now</button></div>
+    <ul class="cards" id="watchList"></ul>
+  </section>
+
+  <details class="group past" id="pastGroup" hidden>
+    <summary><h2 id="pastH">Past 30 days</h2></summary>
+    <p class="muted" style="font-size:.88rem;margin-top:6px">Costco only adjusts within 30 days of purchase, so these are just for reference.</p>
+    <ul class="cards" id="pastList"></ul>
+  </details>
+
+  <details class="panel" id="manual">
+    <summary>Add one item by number</summary>
+    <form class="panel-body" id="addForm" autocomplete="off">
+      <div class="fields">
+        <label class="f">Item number<input class="in mono" id="fItem" inputmode="numeric" pattern="[0-9]{3,9}" required placeholder="1613453"></label>
+        <label class="f">Price paid<input class="in mono" id="fPaid" inputmode="decimal" placeholder="19.99"></label>
+        <label class="f">Date bought<input class="in" id="fDate" type="date"></label>
+      </div>
+      <div><button class="btn primary" type="submit" id="addBtn">Add item</button></div>
+      <p class="msg" id="addMsg" role="status"></p>
+    </form>
+  </details>
+
+  <details class="panel" id="settings">
+    <summary>Store &amp; alerts</summary>
+    <div class="panel-body">
+      <div class="fields">
+        <label class="f">Costco warehouse number<input class="in mono" id="sWh" inputmode="numeric"></label>
+      </div>
+      <p class="muted" style="font-size:.9rem">The number is printed at the top of your receipt, next to the store name (for example, Pentagon City #233).</p>
+      <label class="f">GitHub token, optional (for email alerts and the same list on all your devices)<input class="in" id="sToken" type="password" placeholder="github_pat_…"></label>
       <ol>
         <li>Open <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">GitHub → Fine-grained tokens</a>.</li>
         <li>Repository access: only <span class="mono" id="repoName">this repo</span>. Permissions: Contents → Read and write.</li>
-        <li>Paste it here. It stays in this browser only. Items you added before are copied to the repo.</li>
+        <li>Paste it here. It stays in this browser. Your items are copied to the repo so the 2-day check can email you.</li>
       </ol>
-      <div><button type="button" id="saveSettings">Save settings</button></div>
+      <div><button class="btn" type="button" id="saveSettings">Save</button></div>
       <p class="msg" id="setMsg" role="status"></p>
     </div>
   </details>
+
+  <p class="foot-note" id="checked"></p>
 </main>
+<div class="toast" id="toast" hidden role="status"><span id="toastText"></span><button type="button" id="undo">Undo</button></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script>
@@ -185,7 +281,7 @@ const API_HEADERS = { "client-identifier": "b1be4e95-8696-4d93-8f50-5b5632922209
 const ADJUST_DAYS = 30;
 const $ = id => document.getElementById(id);
 
-// owner.github.io/repo  ->  {owner, repo}
+// owner.github.io/repo  ->  {owner, name}
 const repo = (() => {
   const owner = location.hostname.endsWith(".github.io") ? location.hostname.split(".")[0] : "sashu1999";
   const name = location.pathname.split("/").filter(Boolean)[0] || "costco-price-tracker";
@@ -198,7 +294,7 @@ const store = {
   set(k, v) { try { v ? localStorage.setItem(k, v) : localStorage.removeItem(k); } catch {} },
 };
 
-let state = { warehouse: "233", items: [], itemsSha: null, configSha: null, coupons: {}, history: {}, live: {}, lastRun: null };
+let state = { warehouse: "233", items: [], itemsSha: null, configSha: null, coupons: {}, history: {}, live: {}, lastRun: null, liveOk: false };
 
 async function getJSON(path) {
   const r = await fetch(`${path}?v=${Date.now()}`);
@@ -206,7 +302,7 @@ async function getJSON(path) {
   return r.json();
 }
 
-// Read/write files in the repo through the GitHub API (fresh, and needed for writes).
+// Read/write files in the repo through the GitHub API.
 async function ghGet(path) {
   const token = store.get("ghToken");
   const r = await fetch(`https://api.github.com/repos/${repo.owner}/${repo.name}/contents/${path}?ref=main`, {
@@ -220,16 +316,15 @@ async function ghGet(path) {
 }
 async function ghPut(path, data, sha, message) {
   const token = store.get("ghToken");
-  if (!token) throw new Error("Add a GitHub token in Settings first, so the change can be saved to your repo.");
   const bytes = new TextEncoder().encode(JSON.stringify(data, null, 1) + "\n");
-  const content = btoa(String.fromCharCode(...bytes));
+  let bin = ""; bytes.forEach(b => { bin += String.fromCharCode(b); });
   const r = await fetch(`https://api.github.com/repos/${repo.owner}/${repo.name}/contents/${path}`, {
     method: "PUT",
     headers: { Accept: "application/vnd.github+json", Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ message, content, sha, branch: "main" }),
+    body: JSON.stringify({ message, content: btoa(bin), sha, branch: "main" }),
   });
   if (r.status === 401 || r.status === 403) throw new Error("GitHub rejected the token. Check it has Contents: Read and write on this repo.");
-  if (r.status === 409) throw new Error("The list changed elsewhere. Reload the page and try again.");
+  if (r.status === 409) throw new Error("The list changed on another device. Reload the page and try again.");
   if (!r.ok) throw new Error(`GitHub said ${r.status} saving ${path}.`);
   return (await r.json()).content.sha;
 }
@@ -254,6 +349,8 @@ async function loadData() {
     state.items = localItems() || await getJSON("data/items.json").catch(() => []);
     state.warehouse = String((await getJSON("data/config.json").catch(() => ({}))).warehouse || "233");
   }
+  const wh = store.get("warehouse");
+  if (wh && !store.get("ghToken")) state.warehouse = wh;
   state.coupons = (await getJSON("data/coupons.json").catch(() => ({}))).coupons || {};
   state.history = await getJSON("data/history.json").catch(() => ({}));
   state.lastRun = (await getJSON("data/latest.json").catch(() => ({}))).date || null;
@@ -285,130 +382,163 @@ async function livePrices(numbers) {
 }
 
 const money = n => `$${Number(n).toFixed(2)}`;
+const today = () => new Date().toISOString().slice(0, 10);
 const daysSince = d => Math.floor((Date.now() - new Date(d + "T12:00:00").getTime()) / 864e5);
-
-function spark(points) {
-  if (points.length < 2) return "";
-  const w = 84, h = 22, ys = points.map(p => p.price);
-  const lo = Math.min(...ys), hi = Math.max(...ys), span = hi - lo || 1;
-  const xy = points.map((p, i) => [2 + i * (w - 4) / (points.length - 1), 3 + (h - 6) * (1 - (p.price - lo) / span)]);
-  const d = xy.map(([x, y], i) => `${i ? "L" : "M"}${x.toFixed(1)},${y.toFixed(1)}`).join("");
-  const [lx, ly] = xy[xy.length - 1];
-  return `<svg class="spark" viewBox="0 0 ${w} ${h}" aria-label="Price history"><path d="${d}"/><circle cx="${lx}" cy="${ly}" r="2.5"/></svg>`;
-}
-
-function status(item, live) {
-  if (!live || live.price == null) return { chip: `<span class="chip plain">No price at this warehouse</span>`, back: 0 };
-  const inWindow = !item.date || daysSince(item.date) <= ADJUST_DAYS;
-  if (item.paid && live.price < item.paid && inWindow) {
-    const back = item.paid - live.price;
-    return { chip: `<span class="chip good">Ask for ${money(back)} back</span>`, back };
-  }
-  if (item.paid && live.price < item.paid) return { chip: `<span class="chip plain">Cheaper now, past 30 days</span>`, back: 0 };
-  const past = (state.history[item.item] || []).filter(p => p.date !== new Date().toISOString().slice(0, 10));
-  const prev = past.length ? past[past.length - 1].price : null;
-  if (prev != null && live.price < prev) return { chip: `<span class="chip warn">Down from ${money(prev)}</span>`, back: 0 };
-  return { chip: "", back: 0 };
-}
-
+const shortDate = d => new Date(d + "T12:00:00").toLocaleDateString([], { month: "short", day: "numeric" });
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
+// Costco's warehouse names are all caps with buyer codes ("NAUTICA PJ PANT 2PK FY23 P480 T120 H4").
+function prettyName(s) {
+  if (!s) return "";
+  if (/[a-z]/.test(s)) return s;
+  const keep = new Set(["KS", "PJ", "TV", "XL", "LED", "USB", "HD", "II", "III"]);
+  return s.replace(/\*+/g, "").replace(/\bFY\d{2}\b.*$/, "").replace(/(\s+[A-Z]\d{2,4})+\s*$/, "").trim()
+    .split(/\s+/).map(w => keep.has(w) ? w : /\d/.test(w) ? (/^\d+(PK|CT|OZ|LB)$/.test(w) ? w.replace(/^(\d+)(\D+)$/, (_, n, u) => `${n} ${u.toLowerCase()}`) : w) : w.charAt(0) + w.slice(1).toLowerCase()).join(" ")
+    .replace(/\bks\b/i, "Kirkland Signature").replace(/\bpj\b/, "PJ");
+}
+
+// Decide what each item means for the user right now.
+function assess(item) {
+  const live = state.live[String(item.item)];
+  const price = live?.price ?? null;
+  const age = item.date ? daysSince(item.date) : null;
+  const left = age == null ? null : ADJUST_DAYS - age;
+  const past = (state.history[item.item] || []).filter(p => p.date !== today());
+  const prev = past.length ? past[past.length - 1].price : null;
+  let kind = "watch", back = 0;
+  if (left != null && left < 0) kind = "past";
+  else if (item.paid && price != null && price < item.paid) { kind = "due"; back = +(item.paid - price).toFixed(2); }
+  return { live, price, age, left, prev, kind, back, name: prettyName(live?.name || item.name || item.note) || `Item #${item.item}` };
+}
+
+function card(item, a, idx) {
+  let chip = "";
+  if (a.kind === "due") chip = `<span class="chip good">Claim ${money(a.back)}</span>`;
+  else if (a.price == null) chip = `<span class="chip plain">No price at #${esc(state.warehouse)}</span>`;
+  else if (a.prev != null && a.price < a.prev) chip = `<span class="chip warn">Down from ${money(a.prev)}</span>`;
+  else if (item.paid && a.price > item.paid) chip = `<span class="chip plain">Up ${money(a.price - item.paid)} since you bought</span>`;
+  else if (item.paid && a.kind !== "past") chip = `<span class="chip plain">Same price</span>`;
+  const win = a.left != null && a.kind !== "past"
+    ? `<span class="window"><span class="bar ${a.left <= 5 ? "late" : ""}"><i style="width:${Math.max(4, Math.min(100, (a.left / ADJUST_DAYS) * 100))}%"></i></span>${a.left === 0 ? "Last day" : `${a.left} day${a.left === 1 ? "" : "s"} left`}</span>`
+    : "";
+  return `<li class="card">
+    <div class="name">${esc(a.name)}</div>
+    <div class="now">
+      <span class="price mono">${a.price != null ? money(a.price) : "—"}</span>
+      ${a.live?.off ? `<span class="was mono">incl. ${money(a.live.off)} off</span>` : `<span class="was">today</span>`}
+    </div>
+    <div class="sub">
+      <span class="mono">#${esc(item.item)}</span>
+      ${item.paid ? `<span>Paid <span class="mono">${money(item.paid)}</span>${item.date ? ` on ${shortDate(item.date)}` : ""}</span>` : item.date ? `<span>Bought ${shortDate(item.date)}</span>` : ""}
+    </div>
+    <div class="foot"><span style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">${chip}${win}</span>
+      <button class="x" type="button" data-remove="${idx}" aria-label="Remove ${esc(a.name)}">Remove</button></div>
+  </li>`;
+}
+
 function render() {
-  $("whLabel").textContent = `#${state.warehouse}`;
+  $("storeLabel").textContent = `Costco #${state.warehouse}`;
+  $("storeBtn").classList.toggle("offline", !state.liveOk);
   $("sWh").value = state.warehouse;
   $("sToken").value = store.get("ghToken");
-  const list = $("list");
+
+  const rows = state.items.map((it, idx) => ({ it, idx, a: assess(it) }));
+  const due = rows.filter(r => r.a.kind === "due").sort((x, y) => (x.a.left ?? 99) - (y.a.left ?? 99));
+  const watch = rows.filter(r => r.a.kind === "watch").sort((x, y) => (x.a.left ?? 99) - (y.a.left ?? 99));
+  const past = rows.filter(r => r.a.kind === "past");
+
+  $("dueGroup").hidden = !due.length;
+  $("dueList").innerHTML = due.map(r => card(r.it, r.a, r.idx)).join("");
+  $("watchList").innerHTML = watch.length ? watch.map(r => card(r.it, r.a, r.idx)).join("")
+    : `<li class="empty">${state.items.length ? "Nothing else in its 30-day window." : "Add a receipt above and its items will show up here."}</li>`;
+  $("pastGroup").hidden = !past.length;
+  $("pastH").textContent = `Past 30 days (${past.length})`;
+  $("pastList").innerHTML = past.map(r => card(r.it, r.a, r.idx)).join("");
+
+  const hero = $("hero");
+  const total = due.reduce((s, r) => s + r.a.back, 0);
+  hero.classList.toggle("due", due.length > 0);
   if (!state.items.length) {
-    list.innerHTML = `<li class="empty">No items yet. Add an item number from your receipt below.</li>`;
-    $("summary").textContent = "";
-    return;
+    hero.innerHTML = `<p class="kicker">Get money back on price drops</p>
+      <p class="big">Add your first receipt</p>
+      <p class="sub">If Costco lowers a price within 30 days of your purchase, you can ask for the difference. Add a receipt and this page tells you when.</p>`;
+  } else if (due.length) {
+    hero.innerHTML = `<p class="kicker">You can claim back</p>
+      <p class="big mono">${money(total)}</p>
+      <ul class="claims">${due.map(r => `<li><span class="what">${esc(r.a.name)}: ${money(r.a.back)}</span>
+        <span class="left ${r.a.left != null && r.a.left <= 5 ? "urgent" : ""}">${r.a.left == null ? "" : r.a.left === 0 ? "Last day" : `${r.a.left} day${r.a.left === 1 ? "" : "s"} left`}</span></li>`).join("")}</ul>
+      <p class="sub">Bring the receipt (or your membership card) to the membership counter at any Costco and ask for a price adjustment.</p>`;
+  } else {
+    hero.innerHTML = `<p class="kicker">Nothing to claim right now</p>
+      <p class="big">All prices holding</p>
+      <p class="sub">Watching ${watch.length} item${watch.length === 1 ? "" : "s"} still in their 30-day window. A refund shows up here as soon as a price drops.</p>`;
   }
-  let totalBack = 0, due = 0;
-  list.innerHTML = state.items.map((it, idx) => {
-    const live = state.live[it.item];
-    const st = status(it, live);
-    if (st.back) { totalBack += st.back; due++; }
-    const hist = state.history[it.item] || [];
-    const name = live?.name || it.name || it.note || "Unknown item";
-    return `<li class="row">
-      <div class="name">${esc(name)}</div>
-      <div class="price">
-        <span class="now mono">${live?.price != null ? money(live.price) : "—"}</span>
-        ${live?.off ? `<span class="chip plain mono">incl. ${money(live.off)} off</span>` : ""}
-        ${spark(hist)}
-      </div>
-      <div class="meta">
-        <span class="mono">#${esc(it.item)}</span>
-        ${it.paid ? `<span>Paid <span class="mono">${money(it.paid)}</span></span>` : ""}
-        ${it.date ? `<span>Bought ${esc(it.date)} (${daysSince(it.date)}d ago)</span>` : ""}
-        ${it.note && it.note !== name ? `<span>${esc(it.note)}</span>` : ""}
-      </div>
-      <div class="actions">${st.chip}<button class="link" type="button" data-remove="${idx}">Remove</button></div>
-    </li>`;
-  }).join("");
-  $("summary").innerHTML = due
-    ? `<strong>${money(totalBack)}</strong> to claim back on ${due} item${due > 1 ? "s" : ""}. Show the receipt at the membership counter.`
-    : `${state.items.length} item${state.items.length > 1 ? "s" : ""} tracked. No adjustments due right now.`;
 }
 
 async function refresh() {
-  $("checked").textContent = "Checking prices…";
   $("refresh").disabled = true;
+  $("checked").textContent = "Checking prices…";
   try {
     state.live = await livePrices(state.items.map(i => String(i.item)));
+    state.liveOk = true;
     const t = new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-    $("checked").textContent = `Live prices as of ${t}` + (state.lastRun ? ` · last scheduled check ${state.lastRun}` : "");
+    $("checked").textContent = `Prices at Costco #${state.warehouse} as of ${t}. Includes this month's warehouse coupons.`;
   } catch (e) {
-    $("checked").textContent = `Couldn't reach Costco (${e.message}). Showing saved data.`;
+    state.liveOk = false;
+    $("checked").textContent = `Couldn't reach Costco just now (${e.message}). Try Check now in a minute.`;
   }
   $("refresh").disabled = false;
   render();
 }
-
 $("refresh").addEventListener("click", refresh);
+$("storeBtn").addEventListener("click", () => { $("settings").open = true; $("sWh").focus(); });
 
+// Manual add
 $("addForm").addEventListener("submit", async e => {
   e.preventDefault();
   const item = $("fItem").value.trim();
   const paid = $("fPaid").value.trim() ? parseFloat($("fPaid").value.replace("$", "")) : null;
   const msg = $("addMsg");
   msg.className = "msg";
-  if (!/^\d{3,9}$/.test(item)) { msg.className = "msg err"; msg.textContent = "Item number should be digits only, as printed on the receipt."; return; }
+  if (!/^\d{3,9}$/.test(item)) { msg.className = "msg err"; msg.textContent = "Item numbers are digits only, as printed on the receipt."; return; }
   if (paid !== null && !(paid > 0)) { msg.className = "msg err"; msg.textContent = "Price paid should be a number like 19.99."; return; }
-  if (state.items.some(i => String(i.item) === item)) { msg.className = "msg err"; msg.textContent = `#${item} is already on the list.`; return; }
+  if (state.items.some(i => String(i.item) === item)) { msg.className = "msg err"; msg.textContent = `#${item} is already on your list.`; return; }
   $("addBtn").disabled = true;
-  msg.textContent = "Looking it up and saving…";
   try {
     const live = await livePrices([item]).catch(() => ({}));
-    const entry = { item, paid, date: $("fDate").value || null, note: $("fNote").value.trim() || live[item]?.name || "" };
-    const next = [...state.items, entry];
-    await saveItems(next, `Add item ${item}`);
+    await saveItems([...state.items, { item, paid, date: $("fDate").value || null, name: live[item]?.name || "", note: "" }], `Add item ${item}`);
     Object.assign(state.live, live);
     e.target.reset();
-    msg.textContent = live[item]?.name ? `Added ${live[item].name}.` : `Added #${item}. Costco has no price for it at this warehouse yet.`;
+    msg.textContent = live[item]?.name ? `Added ${prettyName(live[item].name)}.` : `Added #${item}. Costco has no price for it at #${state.warehouse} right now.`;
     render();
-  } catch (err) {
-    msg.className = "msg err"; msg.textContent = err.message;
-  }
+  } catch (err) { msg.className = "msg err"; msg.textContent = err.message; }
   $("addBtn").disabled = false;
 });
 
-// Remove asks for a second tap instead of a dialog.
-$("list").addEventListener("click", async e => {
+// Remove with undo
+let undoTimer = null, lastRemoved = null;
+function onRemove(e) {
   const btn = e.target.closest("[data-remove]");
   if (!btn) return;
-  if (btn.dataset.armed !== "1") { btn.dataset.armed = "1"; btn.textContent = "Tap again to remove"; setTimeout(() => { btn.dataset.armed = ""; btn.textContent = "Remove"; }, 4000); return; }
   const idx = +btn.dataset.remove, it = state.items[idx];
-  const next = state.items.filter((_, i) => i !== idx);
-  btn.disabled = true;
-  try {
-    await saveItems(next, `Remove item ${it.item}`);
-    render();
-  } catch (err) {
-    $("addMsg").className = "msg err"; $("addMsg").textContent = err.message; btn.disabled = false;
-  }
+  lastRemoved = { it, idx };
+  saveItems(state.items.filter((_, i) => i !== idx), `Remove item ${it.item}`).then(render).catch(err => { $("checked").textContent = err.message; });
+  $("toastText").textContent = `Removed ${assess(it).name}`;
+  $("toast").hidden = false;
+  clearTimeout(undoTimer);
+  undoTimer = setTimeout(() => { $("toast").hidden = true; lastRemoved = null; }, 6000);
+}
+["dueList", "watchList", "pastList"].forEach(id => $(id).addEventListener("click", onRemove));
+$("undo").addEventListener("click", async () => {
+  if (!lastRemoved) return;
+  const next = [...state.items];
+  next.splice(lastRemoved.idx, 0, lastRemoved.it);
+  lastRemoved = null; $("toast").hidden = true;
+  await saveItems(next, "Undo remove").catch(err => { $("checked").textContent = err.message; });
+  render();
 });
 
+// Settings
 $("saveSettings").addEventListener("click", async () => {
   const msg = $("setMsg");
   msg.className = "msg";
@@ -416,9 +546,12 @@ $("saveSettings").addEventListener("click", async () => {
   const wh = $("sWh").value.trim();
   try {
     if (wh && wh !== state.warehouse) {
-      if (!/^\d{1,5}$/.test(wh)) throw new Error("Warehouse number should be digits, like 233.");
-      if (!state.configSha) state.configSha = (await ghGet("data/config.json")).sha;
-      state.configSha = await ghPut("data/config.json", { warehouse: wh }, state.configSha, `Use warehouse ${wh}`);
+      if (!/^\d{1,5}$/.test(wh)) throw new Error("The warehouse number is digits only, like 233.");
+      if (store.get("ghToken")) {
+        if (!state.configSha) state.configSha = (await ghGet("data/config.json")).sha;
+        state.configSha = await ghPut("data/config.json", { warehouse: wh }, state.configSha, `Use warehouse ${wh}`);
+      }
+      store.set("warehouse", wh);
       state.warehouse = wh;
     }
     if (store.get("ghToken")) {
@@ -429,80 +562,85 @@ $("saveSettings").addEventListener("click", async () => {
         await saveItems(merged, "Add items saved in the browser");
       } else state.items = remote.data;
     }
-    msg.textContent = "Saved.";
+    msg.textContent = store.get("ghToken") ? "Saved. Email alerts are on." : "Saved.";
     refresh();
-  } catch (err) {
-    msg.className = "msg err"; msg.textContent = err.message;
-  }
+  } catch (err) { msg.className = "msg err"; msg.textContent = err.message; }
 });
 
-// Receipt upload: parse PDFs, show a review table, then save the ticked rows in one commit.
+// Receipt upload: parse PDFs, show a review list, then save the ticked rows.
 let pending = [];
-$("rcptFile").addEventListener("change", async e => {
+async function readFiles(files) {
   const msg = $("rcptMsg");
   msg.className = "msg";
-  const files = [...e.target.files];
-  if (!files.length) return;
+  files = files.filter(f => /pdf$/i.test(f.type) || /\.pdf$/i.test(f.name));
+  if (!files.length) { msg.className = "msg err"; msg.textContent = "Pick a receipt saved as PDF."; return; }
   if (!window.readCostcoReceipt || !window.pdfjsLib) { msg.className = "msg err"; msg.textContent = "The PDF reader didn't load. Check your connection and reload the page."; return; }
   msg.textContent = `Reading ${files.length} receipt${files.length > 1 ? "s" : ""}…`;
-  const found = new Map();
-  const problems = [];
+  const found = new Map(), problems = [];
   for (const f of files) {
     try {
       const r = await window.readCostcoReceipt(f);
-      if (!r.items.length) { problems.push(`${f.name}: no items found. Is it a Costco warehouse receipt PDF?`); continue; }
+      if (!r.items.length) { problems.push(`${f.name} doesn't look like a Costco warehouse receipt.`); continue; }
       for (const it of r.items) {
         const prev = found.get(it.item);
         // Keep the most recent purchase of an item: that's the one still in its adjustment window.
         if (!prev || (r.date || "") > (prev.date || "")) found.set(it.item, { ...it, date: r.date, warehouse: r.warehouse });
       }
-    } catch (err) {
-      problems.push(`${f.name}: couldn't read it (${err.message}).`);
-    }
+    } catch (err) { problems.push(`Couldn't read ${f.name}.`); }
   }
   pending = [...found.values()].map(it => {
     const onList = state.items.find(x => String(x.item) === it.item);
     const old = it.date && daysSince(it.date) > ADJUST_DAYS;
-    const sameOrNewer = onList && (onList.date || "") >= (it.date || "");
-    return { ...it, pick: !old && !sameOrNewer, why: sameOrNewer ? "Already on your list" : old ? `Bought ${daysSince(it.date)} days ago` : onList ? "Updates the item on your list" : "" };
-  });
-  e.target.value = "";
-  if (!pending.length) { msg.className = "msg err"; msg.textContent = problems.join(" ") || "No items found."; return; }
+    const sameOrNewer = onList && onList.date && onList.date >= (it.date || "");
+    return { ...it, pick: !old && !sameOrNewer,
+      why: sameOrNewer ? "Already on your list" : old ? `Bought ${daysSince(it.date)} days ago, past the 30-day window` : onList ? "Updates the one on your list" : "" };
+  }).sort((a, b) => b.pick - a.pick);
   msg.textContent = problems.join(" ");
-  $("reviewRows").innerHTML = pending.map((it, i) => `<tr>
-      <td><input type="checkbox" id="pick${i}" data-pick="${i}" ${it.pick ? "checked" : ""} aria-label="Add ${esc(it.name)}"></td>
-      <td><label for="pick${i}" style="display:block;color:inherit;font-size:inherit">${esc(it.name || "Item")} <span class="mono muted">#${esc(it.item)}</span></label>${it.why ? `<span class="why">${esc(it.why)}</span>` : ""}</td>
-      <td class="mono">${esc(it.date || "")}${it.warehouse && it.warehouse !== state.warehouse ? `<span class="why">store #${esc(it.warehouse)}</span>` : ""}</td>
-      <td class="num mono">${money(it.paid)}${it.discount ? `<span class="why">after ${money(it.discount)} off</span>` : ""}</td>
-    </tr>`).join("");
+  if (!pending.length) { msg.className = "msg err"; msg.textContent = problems.join(" ") || "No items found."; return; }
+  $("reviewRows").innerHTML = pending.map((it, i) => `<li class="pick">
+      <input type="checkbox" id="pick${i}" data-pick="${i}" ${it.pick ? "checked" : ""}>
+      <label for="pick${i}">${esc(prettyName(it.name) || "Item")} <span class="mono muted">#${esc(it.item)}</span>
+        <span class="why">${it.date ? `Bought ${shortDate(it.date)}` : ""}${it.why ? ` · ${esc(it.why)}` : ""}</span></label>
+      <span class="amt mono">${money(it.paid)}${it.discount ? `<span class="why">after ${money(it.discount)} off</span>` : ""}</span>
+    </li>`).join("");
+  updateReviewCount();
   $("review").hidden = false;
-});
-$("reviewRows").addEventListener("change", e => { const i = e.target.dataset.pick; if (i != null) pending[+i].pick = e.target.checked; });
+  $("review").scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+function updateReviewCount() {
+  const n = pending.filter(p => p.pick).length;
+  $("reviewTitle").textContent = `Found ${pending.length} item${pending.length === 1 ? "" : "s"}`;
+  $("reviewCount").textContent = `${n} selected`;
+  $("reviewAdd").textContent = n ? `Add ${n} item${n === 1 ? "" : "s"}` : "Add items";
+  $("reviewAdd").disabled = !n;
+}
+$("rcptFile").addEventListener("change", e => { readFiles([...e.target.files]); e.target.value = ""; });
+const drop = $("drop");
+["dragenter", "dragover"].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.add("over"); }));
+["dragleave", "drop"].forEach(t => drop.addEventListener(t, () => drop.classList.remove("over")));
+drop.addEventListener("drop", e => { e.preventDefault(); readFiles([...e.dataTransfer.files]); });
+$("reviewRows").addEventListener("change", e => { const i = e.target.dataset.pick; if (i != null) { pending[+i].pick = e.target.checked; updateReviewCount(); } });
 $("reviewCancel").addEventListener("click", () => { pending = []; $("review").hidden = true; $("rcptMsg").textContent = ""; });
 $("reviewAdd").addEventListener("click", async () => {
   const msg = $("rcptMsg");
   const chosen = pending.filter(p => p.pick);
-  msg.className = "msg";
-  if (!chosen.length) { msg.textContent = "Tick at least one item to add."; return; }
+  if (!chosen.length) return;
   const next = state.items.map(x => ({ ...x }));
   for (const c of chosen) {
-    const entry = { item: c.item, paid: c.paid, date: c.date, name: c.name, warehouse: c.warehouse, note: "" };
+    const entry = { item: c.item, paid: c.paid, date: c.date, name: c.name, warehouse: c.warehouse };
     const i = next.findIndex(x => String(x.item) === c.item);
-    if (i >= 0) next[i] = { ...next[i], ...entry, note: next[i].note || "" }; else next.push(entry);
+    if (i >= 0) next[i] = { ...next[i], ...entry }; else next.push({ ...entry, note: "" });
   }
   $("reviewAdd").disabled = true;
+  msg.className = "msg";
   msg.textContent = "Saving…";
   try {
-    const where = await saveItems(next, `Add ${chosen.length} item${chosen.length > 1 ? "s" : ""} from receipts`);
-    var savedNote = where === "browser" ? " Saved in this browser. Add a GitHub token in Settings to get email alerts." : "";
+    await saveItems(next, `Add ${chosen.length} item${chosen.length > 1 ? "s" : ""} from receipts`);
     pending = []; $("review").hidden = true;
-    msg.textContent = `Added ${chosen.length} item${chosen.length > 1 ? "s" : ""}. Checking prices…`;
+    msg.textContent = `Added ${chosen.length} item${chosen.length > 1 ? "s" : ""}.`;
     await refresh();
-    msg.textContent = `Added ${chosen.length} item${chosen.length > 1 ? "s" : ""}.${savedNote}`;
-  } catch (err) {
-    msg.className = "msg err"; msg.textContent = err.message;
-  }
-  $("reviewAdd").disabled = false;
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  } catch (err) { msg.className = "msg err"; msg.textContent = err.message; $("reviewAdd").disabled = false; }
 });
 
 loadData().then(() => { render(); refresh(); });
