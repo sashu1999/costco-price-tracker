@@ -165,6 +165,22 @@ button { cursor: pointer; }
 .hist-empty { grid-column: 1 / -1; margin: 4px 0 0; font-size: .85rem; color: var(--muted); }
 .btn.small { padding: 5px 10px; font-size: .85rem; border-radius: 8px; }
 .hero .saved { margin: 0; font-size: .92rem; }
+.hero .fresh { margin: 0; font-size: .8rem; color: var(--muted); display: flex; align-items: baseline; gap: 6px; }
+.hero .fresh .dot-ok { flex: none; transform: translateY(-1px); }
+.dot-ok { width: 7px; height: 7px; border-radius: 50%; background: var(--good-strong); display: inline-block; }
+.card .name { display: flex; align-items: center; gap: 10px; }
+.thumb { width: 44px; height: 44px; object-fit: contain; border-radius: 8px; background: #fff; flex: none; }
+.counter { border: 0; border-radius: 18px; padding: 22px; width: min(440px, calc(100vw - 32px)); background: var(--surface); color: var(--ink); box-shadow: 0 10px 40px rgba(0,0,0,.25); }
+.counter::backdrop { background: rgba(0,0,0,.45); }
+.counter form { display: grid; gap: 14px; }
+.counter h2 { margin: 0; font-size: 1.3rem; text-transform: none; letter-spacing: 0; color: var(--ink); }
+.counter .kicker { margin: 0; font-size: .85rem; color: var(--muted); }
+.counter-img { width: 120px; height: 120px; object-fit: contain; background: #fff; border-radius: 12px; }
+.counter dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 8px 16px; align-items: baseline; }
+.counter dt { color: var(--muted); font-size: .9rem; }
+.counter dd { margin: 0; font-size: 1.1rem; }
+.counter dd.big { font-size: 1.9rem; font-weight: 700; letter-spacing: .02em; }
+.counter dd.good { color: var(--good); }
 .empty { background: var(--surface); border-radius: 14px; padding: 18px; color: var(--muted); text-align: center; }
 details.past > summary { cursor: pointer; list-style: none; }
 details.past > summary::-webkit-details-marker { display: none; }
@@ -396,6 +412,13 @@ input.in { width: 100%; padding: 9px 11px; border: 1px solid var(--rule); border
 
   <p class="foot-note" id="checked"></p>
 </main>
+<dialog class="counter" id="counter">
+  <form method="dialog">
+    <p class="kicker">Price adjustment</p>
+    <div id="counterBody"></div>
+    <button class="btn primary" type="submit">Done</button>
+  </form>
+</dialog>
 <div class="toast" id="toast" hidden role="status"><span id="toastText"></span><button type="button" id="undo">Undo</button></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
@@ -518,7 +541,8 @@ async function livePrices(numbers) {
         off = c.off != null ? c.off : +(price - after).toFixed(2);
         price = after;
       }
-      out[p.id] = { name, price, off };
+      const img = p.imageName || p.descriptions?.[0]?.object?.imageName || null;
+      out[p.id] = { name, price, off, img: img ? `${img}?width=160` : null };
     }
   }
   return out;
@@ -530,6 +554,13 @@ const daysSince = d => Math.floor((Date.now() - new Date(d + "T12:00:00").getTim
 const shortDate = d => new Date(d + "T12:00:00").toLocaleDateString([], { month: "short", day: "numeric" });
 const addDays = (d, n) => { const t = new Date(d + "T12:00:00"); t.setDate(t.getDate() + n); return t.toISOString().slice(0, 10); };
 const URGENT_DAYS = 3;
+// The scheduled check runs at 12:52 UTC every day (.github/workflows/check.yml).
+function nextCheck() {
+  const n = new Date(), t = new Date(Date.UTC(n.getUTCFullYear(), n.getUTCMonth(), n.getUTCDate(), 12, 52));
+  if (t <= n) t.setUTCDate(t.getUTCDate() + 1);
+  const time = t.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  return `${t.toDateString() === n.toDateString() ? "today" : "tomorrow"} at ${time}`;
+}
 // "Claim by Oct 14 · 4 days left"
 const claimText = (date, left) => left === 0 ? `Last day to claim (${shortDate(addDays(date, ADJUST_DAYS))})`
   : `Claim by ${shortDate(addDays(date, ADJUST_DAYS))} · ${left} day${left === 1 ? "" : "s"} left`;
@@ -596,7 +627,7 @@ function card(item, a, idx) {
     : "";
   const urgent = a.kind === "due" && a.left != null && a.left <= URGENT_DAYS;
   return `<li class="card${urgent ? " urgent" : ""}">
-    <div class="name">${esc(a.name)}</div>
+    <div class="name">${a.live?.img ? `<img class="thumb" src="${esc(a.live.img)}" alt="" loading="lazy" onerror="this.remove()">` : ""}<span>${esc(a.name)}</span></div>
     <div class="now">
       <span class="price mono">${a.price != null ? money(a.price) : "—"}</span>
       ${a.live?.off ? `<span class="was mono">incl. ${money(a.live.off)} off</span>` : `<span class="was">today</span>`}
@@ -607,7 +638,7 @@ function card(item, a, idx) {
     </div>
     <div class="foot"><span style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">${chip}${win}</span>
       <span class="acts"><button class="x" type="button" data-chart="${esc(item.item)}" aria-expanded="${openCharts.has(String(item.item))}">History</button>
-      ${a.kind === "due" ? `<button class="btn small" type="button" data-claim="${idx}">Mark claimed</button>` : ""}
+      ${a.kind === "due" ? `<button class="x" type="button" data-counter="${idx}">Show at counter</button><button class="btn small" type="button" data-claim="${idx}">Mark claimed</button>` : ""}
       ${a.kind === "claimed" ? `<button class="x" type="button" data-unclaim="${idx}">Not claimed</button>` : ""}
       <button class="x" type="button" data-remove="${idx}" aria-label="Remove ${esc(a.name)}">Remove</button></span></div>
     ${openCharts.has(String(item.item)) ? chart(item, a) : ""}
@@ -643,6 +674,9 @@ function render() {
 
   const hero = $("hero");
   const total = due.reduce((s, r) => s + r.a.back, 0);
+  const checkedLine = `<p class="fresh">${state.liveOk && state.checkedAt
+    ? `<span class="dot-ok"></span><span>Live prices from Costco #${esc(state.warehouse)} as of ${state.checkedAt} · next email check ${nextCheck()}</span>`
+    : state.checkedAt === undefined ? "Checking prices…" : "Couldn't reach Costco just now"}</p>`;
   const savedLine = saved ? `<p class="saved">You've gotten <strong class="mono">${money(saved)}</strong> back so far.</p>` : "";
   hero.classList.toggle("due", due.length > 0);
   if (!state.items.length) {
@@ -654,11 +688,11 @@ function render() {
       <p class="big mono">${money(total)}</p>
       <ul class="claims">${due.map(r => `<li><span class="what">${esc(r.a.name)}: ${money(r.a.back)}</span>
         <span class="left ${r.a.left != null && r.a.left <= URGENT_DAYS ? "urgent" : ""}">${r.a.left == null ? "" : r.a.left === 0 ? "Last day" : `by ${shortDate(addDays(r.it.date, ADJUST_DAYS))} · ${r.a.left}d left`}</span></li>`).join("")}</ul>
-      <p class="sub">Bring the receipt (or your membership card) to the membership counter at any Costco and ask for a price adjustment. Then tap <strong>Mark claimed</strong>.</p>${savedLine}`;
+      <p class="sub">Bring the receipt (or your membership card) to the membership counter at any Costco and ask for a price adjustment. Then tap <strong>Mark claimed</strong>.</p>${savedLine}${checkedLine}`;
   } else {
     hero.innerHTML = `<p class="kicker">Nothing to claim right now</p>
       <p class="big">All prices holding</p>
-      <p class="sub">Watching ${watch.length} item${watch.length === 1 ? "" : "s"} still in their 30-day window. A refund shows up here as soon as a price drops.</p>${savedLine}`;
+      <p class="sub">Watching ${watch.length} item${watch.length === 1 ? "" : "s"} still in their 30-day window. A refund shows up here as soon as a price drops.</p>${savedLine}${checkedLine}`;
   }
 }
 
@@ -669,6 +703,7 @@ async function refresh() {
     state.live = await livePrices(state.items.map(i => String(i.item)));
     state.liveOk = true;
     const t = new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    state.checkedAt = t;
     $("checked").textContent = `Prices at Costco #${state.warehouse} as of ${t}. Includes this month's warehouse coupons.`;
   } catch (e) {
     state.liveOk = false;
@@ -734,6 +769,24 @@ async function setClaimed(idx, on) {
   openCharts.has(k) ? openCharts.delete(k) : openCharts.add(k);
   render();
 }));
+// "Show at counter": big, plain facts to show the cashier.
+$("dueList").addEventListener("click", e => {
+  const b = e.target.closest("[data-counter]");
+  if (!b) return;
+  const it = state.items[+b.dataset.counter], a = assess(it);
+  $("counterBody").innerHTML = `
+    ${a.live?.img ? `<img class="counter-img" src="${esc(a.live.img.replace("width=160", "width=400"))}" alt="">` : ""}
+    <h2>${esc(a.name)}</h2>
+    <dl>
+      <dt>Item number</dt><dd class="mono big">${esc(it.item)}</dd>
+      <dt>Bought</dt><dd>${it.date ? new Date(it.date + "T12:00:00").toLocaleDateString([], { month: "long", day: "numeric", year: "numeric" }) : "—"}${it.warehouse ? ` at Costco #${esc(it.warehouse)}` : ""}</dd>
+      <dt>Paid</dt><dd class="mono">${money(it.paid)}</dd>
+      <dt>Price today</dt><dd class="mono">${money(a.price)}${a.live?.off ? ` (${money(a.live.off)} off)` : ""}</dd>
+      <dt>Difference</dt><dd class="mono big good">${money(a.back)}</dd>
+    </dl>
+    <p class="muted">Show your membership card or receipt at the membership counter.</p>`;
+  $("counter").showModal();
+});
 ["dueList", "claimedList"].forEach(id => $(id).addEventListener("click", e => {
   const c = e.target.closest("[data-claim]"), u = e.target.closest("[data-unclaim]");
   if (c) setClaimed(+c.dataset.claim, true);
