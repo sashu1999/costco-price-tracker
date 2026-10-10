@@ -217,8 +217,10 @@
   }
 
   // Data access for a verified session.
-  const toRow = it => ({ item: String(it.item), name: it.name || null, paid: it.paid ?? null, bought_on: it.date || null, warehouse: it.warehouse || null, note: it.note || null });
-  const fromRow = r => ({ item: r.item, name: r.name || "", paid: r.paid == null ? null : Number(r.paid), date: r.bought_on, warehouse: r.warehouse, note: r.note || "" });
+  const toRow = it => ({ item: String(it.item), name: it.name || null, paid: it.paid ?? null, bought_on: it.date || null, warehouse: it.warehouse || null, note: it.note || null,
+                       claimed_at: it.claimedAt || null, claimed_amount: it.claimedAmt ?? null });
+  const fromRow = r => ({ item: r.item, name: r.name || "", paid: r.paid == null ? null : Number(r.paid), date: r.bought_on, warehouse: r.warehouse, note: r.note || "",
+                         claimedAt: r.claimed_at || null, claimedAmt: r.claimed_amount == null ? null : Number(r.claimed_amount) });
 
   async function loadItems() {
     const { data, error } = await client.from("items").select("*").order("added_at");

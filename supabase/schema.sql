@@ -135,3 +135,19 @@ create table if not exists private_alerts_sent (
 );
 alter table private_alerts_sent enable row level security;
 revoke all on private_alerts_sent from anon, authenticated;
+
+-- ── Added for claims and reminders ───────────────────────────────────────────
+-- When the person got their price adjustment, and how much they got back.
+alter table public.items add column if not exists claimed_at timestamptz;
+alter table public.items add column if not exists claimed_amount numeric(10,2);
+
+-- "Last chance" reminders already emailed, once per purchase.
+create table if not exists private_reminders_sent (
+  user_id   uuid not null,
+  item      text not null,
+  bought_on date not null,
+  sent_at   timestamptz not null default now(),
+  primary key (user_id, item, bought_on)
+);
+alter table private_reminders_sent enable row level security;
+revoke all on private_reminders_sent from anon, authenticated;

@@ -26,6 +26,7 @@ from html import escape
 from costco import apply_coupon, check_items, warehouse_coupons
 
 ADJUST_DAYS = 30
+REMIND_DAYS = 3     # "last chance" email when this many days or fewer are left
 APP_URL = os.environ.get("APP_URL", "https://sashu1999.github.io/costco-price-tracker/")
 
 
@@ -64,10 +65,13 @@ class Supabase:
             page += 1
 
 
-def claims_for(items, prices, today, already_sent):
-    """Items a person can claim money back on, skipping drops they were already told about."""
+def claims_for(items, prices, today, already_sent, reminded=frozenset()):
+    """What to email a person: new drops, plus a last-chance reminder for drops already
+    emailed that are about to run out. Claimed items are skipped."""
     out = []
     for it in items:
+        if it.get("claimed_at"):
+            continue
         r = prices.get(it["item"])
         if not r or r["price"] is None or it.get("paid") is None:
             continue
@@ -78,9 +82,12 @@ def claims_for(items, prices, today, already_sent):
         left = None if bought is None else ADJUST_DAYS - (today - bought).days
         if left is not None and left < 0:
             continue
+        reminder = False
         if (it["item"], round(price, 2)) in already_sent:
-            continue
-        out.append({"item": it["item"], "name": r["name"] or it.get("name") or f"Item {it['item']}",
+            if left is None or left > REMIND_DAYS or (it["item"], it["bought_on"]) in reminded:
+                continue
+            reminder = True
+        out.append({"reminder": reminder, "bought_on": it.get("bought_on"), "item": it["item"], "name": r["name"] or it.get("name") or f"Item {it['item']}",
                     "paid": paid, "price": price, "back": round(paid - price, 2), "left": left,
                     "by": bought + dt.timedelta(days=ADJUST_DAYS) if bought else None})
     return sorted(out, key=lambda c: (c["left"] is None, c["left"]))
@@ -89,6 +96,7 @@ def claims_for(items, prices, today, already_sent):
 def email_body(claims, store):
     total = sum(c["back"] for c in claims)
     lines = [f"You can claim ${total:.2f} back at Costco.", ""]
+    soon = [c for c in claims if c["left"] is not None and c["left"] <= REMIND_DAYS]
     rows = []
     for c in claims:
         left = "" if c["left"] is None else f" (claim by {c['by']:%b %-d}, {c['left']} day{'s' if c['left'] != 1 else ''} left)"
@@ -97,13 +105,20 @@ def email_body(claims, store):
         rows.append(f"<tr><td style='padding:6px 12px 6px 0'>{escape(c['name'])} <span style='color:#666'>#{c['item']}</span></td>"
                     f"<td style='padding:6px 12px 6px 0'>${c['paid']:.2f} → ${c['price']:.2f}</td>"
                     f"<td style='padding:6px 0;font-weight:600;color:#17703f'>${c['back']:.2f}{escape(left)}</td></tr>")
-    lines += ["", f"Prices at Costco #{store}. Show your receipt or membership card at the membership counter.", APP_URL]
+    lines += ["", "Got your money back? Tap Mark claimed in the app so you stop getting emails about it.",
+              "", f"Prices at Costco #{store}. Show your receipt or membership card at the membership counter.", APP_URL]
     html = (f"<div style='font-family:system-ui,sans-serif;font-size:15px;color:#1b1f23'>"
             f"<p style='font-size:20px;font-weight:700;color:#17703f;margin:0 0 12px'>You can claim ${total:.2f} back</p>"
             f"<table style='border-collapse:collapse'>{''.join(rows)}</table>"
+            f"<p style='color:#555'>Got your money back? Tap <b>Mark claimed</b> in the app so you stop getting emails about it.</p>"
             f"<p style='color:#555'>Prices at Costco #{escape(store)}. Show your receipt or membership card at the membership counter.</p>"
             f"<p><a href='{APP_URL}'>Open Price Adjust</a></p></div>")
-    return f"Costco price drop: claim ${total:.2f} back", "\n".join(lines), html
+    if soon and all(c["reminder"] for c in claims):
+        last = min(c["left"] for c in soon)
+        subject = f"Last chance: claim ${total:.2f} back at Costco ({'today' if last == 0 else f'{last} day' + ('s' if last != 1 else '') + ' left'})"
+    else:
+        subject = f"Costco price drop: claim ${total:.2f} back"
+    return subject, "\n".join(lines), html
 
 
 def send_email(smtp, sender, to, subject, text, html):
@@ -123,7 +138,7 @@ def main():
     db = Supabase(url, key)
     today = dt.date.today()
 
-    items = db.select("items", "select=user_id,item,name,paid,bought_on")
+    items = db.select("items", "select=user_id,item,name,paid,bought_on,claimed_at")
     profiles = {p["user_id"]: p for p in db.select("profiles", "select=user_id,warehouse,email_alerts")}
     by_user = defaultdict(list)
     for it in items:
@@ -146,13 +161,16 @@ def main():
 
     sent = {(a["user_id"], a["item"], round(float(a["price"]), 2))
             for a in db.select("private_alerts_sent", "select=user_id,item,price")}
+    reminded = {(a["user_id"], a["item"], a["bought_on"])
+                for a in db.select("private_reminders_sent", "select=user_id,item,bought_on")}
     emails = db.user_emails()
     outbox = []
     for user, its in by_user.items():
         if profiles.get(user, {}).get("email_alerts") is False or user not in emails:
             continue
         already = {(i, p) for (u, i, p) in sent if u == user}
-        claims = claims_for(its, prices[store_of[user]], today, already)
+        done = {(i, b) for (u, i, b) in reminded if u == user}
+        claims = claims_for(its, prices[store_of[user]], today, already, done)
         if claims:
             outbox.append((user, emails[user], claims, store_of[user]))
 
@@ -170,6 +188,9 @@ def main():
             send_email(smtp, gmail_user, to, subject, text, html)
             db.upsert("private_alerts_sent", [{"user_id": user, "item": c["item"], "price": c["price"]} for c in claims],
                       "user_id,item,price")
+            db.upsert("private_reminders_sent", [{"user_id": user, "item": c["item"], "bought_on": c["bought_on"]}
+                                                 for c in claims if c["left"] is not None and c["left"] <= REMIND_DAYS],
+                      "user_id,item,bought_on")
             print(f"Emailed {len(claims)} drop(s) to user {user[:8]}…")
 
 
