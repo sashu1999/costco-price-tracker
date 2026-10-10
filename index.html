@@ -93,6 +93,13 @@ form.add .full { grid-column: 1 / -1; }
 .note { font-size: .85rem; color: var(--muted); margin: 8px 0 0; }
 .msg { font-size: .88rem; min-height: 1.3em; margin: 0; }
 .msg.err { color: var(--accent); }
+.drop { display: grid; gap: 8px; justify-items: start; }
+.review { width: 100%; border-collapse: collapse; font-size: .9rem; }
+.review th { text-align: left; font-weight: 500; color: var(--muted); font-size: .78rem; padding: 6px 8px 6px 0; border-bottom: 1px solid var(--rule); }
+.review td { padding: 7px 8px 7px 0; border-bottom: 1px dashed var(--rule); vertical-align: top; }
+.review td.num { text-align: right; white-space: nowrap; }
+.review .why { display: block; font-size: .78rem; color: var(--muted); }
+.scroll { overflow-x: auto; }
 details { border-top: 1px solid var(--rule); padding-top: 14px; }
 summary { cursor: pointer; font-weight: 500; }
 .settings { display: grid; gap: 12px; margin-top: 12px; }
@@ -117,8 +124,28 @@ summary { cursor: pointer; font-weight: 500; }
     <ul class="list" id="list"></ul>
   </section>
 
+  <section aria-labelledby="rcptH">
+    <h2 id="rcptH">Add from receipts</h2>
+    <div class="drop">
+      <label for="rcptFile" class="muted">On costco.com go to Orders &amp; Purchases → Warehouse, open a receipt, choose Print Receipt and save it as PDF. Then pick one or more here.</label>
+      <input id="rcptFile" type="file" accept="application/pdf,.pdf" multiple>
+    </div>
+    <div id="review" hidden>
+      <div class="scroll"><table class="review">
+        <thead><tr><th></th><th>Item</th><th>Bought</th><th class="num">Paid</th></tr></thead>
+        <tbody id="reviewRows"></tbody>
+      </table></div>
+      <p class="note">Items older than 30 days are unticked: the price adjustment window has closed for those.</p>
+      <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:10px">
+        <button class="primary" type="button" id="reviewAdd">Add selected items</button>
+        <button type="button" id="reviewCancel">Cancel</button>
+      </div>
+    </div>
+    <p class="msg" id="rcptMsg" role="status"></p>
+  </section>
+
   <section aria-labelledby="addH">
-    <h2 id="addH">Add an item from a receipt</h2>
+    <h2 id="addH">Add one item by hand</h2>
     <form class="add" id="addForm" autocomplete="off">
       <label>Item number<input id="fItem" class="mono" inputmode="numeric" pattern="[0-9]{3,9}" required placeholder="1613453"></label>
       <label>Price paid<input id="fPaid" class="mono" inputmode="decimal" placeholder="19.99"></label>
@@ -146,6 +173,11 @@ summary { cursor: pointer; font-weight: 500; }
   </details>
 </main>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>
+if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+</script>
+<script src="receipt.js"></script>
 <script>
 const API = "https://gdx-api.costco.com/catalog/product/product-api/v2/products/summary";
 const CLIENT_ID = "4900eb1f-0c10-4bd9-99c3-c59e6c1ecebf";
@@ -285,7 +317,7 @@ function render() {
     const st = status(it, live);
     if (st.back) { totalBack += st.back; due++; }
     const hist = state.history[it.item] || [];
-    const name = live?.name || it.note || "Unknown item";
+    const name = live?.name || it.name || it.note || "Unknown item";
     return `<li class="row">
       <div class="name">${esc(name)}</div>
       <div class="price">
@@ -297,7 +329,7 @@ function render() {
         <span class="mono">#${esc(it.item)}</span>
         ${it.paid ? `<span>Paid <span class="mono">${money(it.paid)}</span></span>` : ""}
         ${it.date ? `<span>Bought ${esc(it.date)} (${daysSince(it.date)}d ago)</span>` : ""}
-        ${it.note && live?.name ? `<span>${esc(it.note)}</span>` : ""}
+        ${it.note && it.note !== name ? `<span>${esc(it.note)}</span>` : ""}
       </div>
       <div class="actions">${st.chip}<button class="link" type="button" data-remove="${idx}">Remove</button></div>
     </li>`;
@@ -387,6 +419,75 @@ $("saveSettings").addEventListener("click", async () => {
   } catch (err) {
     msg.className = "msg err"; msg.textContent = err.message;
   }
+});
+
+// Receipt upload: parse PDFs, show a review table, then save the ticked rows in one commit.
+let pending = [];
+$("rcptFile").addEventListener("change", async e => {
+  const msg = $("rcptMsg");
+  msg.className = "msg";
+  const files = [...e.target.files];
+  if (!files.length) return;
+  if (!window.readCostcoReceipt || !window.pdfjsLib) { msg.className = "msg err"; msg.textContent = "The PDF reader didn't load. Check your connection and reload the page."; return; }
+  msg.textContent = `Reading ${files.length} receipt${files.length > 1 ? "s" : ""}…`;
+  const found = new Map();
+  const problems = [];
+  for (const f of files) {
+    try {
+      const r = await window.readCostcoReceipt(f);
+      if (!r.items.length) { problems.push(`${f.name}: no items found. Is it a Costco warehouse receipt PDF?`); continue; }
+      for (const it of r.items) {
+        const prev = found.get(it.item);
+        // Keep the most recent purchase of an item: that's the one still in its adjustment window.
+        if (!prev || (r.date || "") > (prev.date || "")) found.set(it.item, { ...it, date: r.date, warehouse: r.warehouse });
+      }
+    } catch (err) {
+      problems.push(`${f.name}: couldn't read it (${err.message}).`);
+    }
+  }
+  pending = [...found.values()].map(it => {
+    const onList = state.items.find(x => String(x.item) === it.item);
+    const old = it.date && daysSince(it.date) > ADJUST_DAYS;
+    const sameOrNewer = onList && (onList.date || "") >= (it.date || "");
+    return { ...it, pick: !old && !sameOrNewer, why: sameOrNewer ? "Already on your list" : old ? `Bought ${daysSince(it.date)} days ago` : onList ? "Updates the item on your list" : "" };
+  });
+  e.target.value = "";
+  if (!pending.length) { msg.className = "msg err"; msg.textContent = problems.join(" ") || "No items found."; return; }
+  msg.textContent = problems.join(" ");
+  $("reviewRows").innerHTML = pending.map((it, i) => `<tr>
+      <td><input type="checkbox" id="pick${i}" data-pick="${i}" ${it.pick ? "checked" : ""} aria-label="Add ${esc(it.name)}"></td>
+      <td><label for="pick${i}" style="display:block;color:inherit;font-size:inherit">${esc(it.name || "Item")} <span class="mono muted">#${esc(it.item)}</span></label>${it.why ? `<span class="why">${esc(it.why)}</span>` : ""}</td>
+      <td class="mono">${esc(it.date || "")}${it.warehouse && it.warehouse !== state.warehouse ? `<span class="why">store #${esc(it.warehouse)}</span>` : ""}</td>
+      <td class="num mono">${money(it.paid)}${it.discount ? `<span class="why">after ${money(it.discount)} off</span>` : ""}</td>
+    </tr>`).join("");
+  $("review").hidden = false;
+});
+$("reviewRows").addEventListener("change", e => { const i = e.target.dataset.pick; if (i != null) pending[+i].pick = e.target.checked; });
+$("reviewCancel").addEventListener("click", () => { pending = []; $("review").hidden = true; $("rcptMsg").textContent = ""; });
+$("reviewAdd").addEventListener("click", async () => {
+  const msg = $("rcptMsg");
+  const chosen = pending.filter(p => p.pick);
+  msg.className = "msg";
+  if (!chosen.length) { msg.textContent = "Tick at least one item to add."; return; }
+  const next = state.items.map(x => ({ ...x }));
+  for (const c of chosen) {
+    const entry = { item: c.item, paid: c.paid, date: c.date, name: c.name, warehouse: c.warehouse, note: "" };
+    const i = next.findIndex(x => String(x.item) === c.item);
+    if (i >= 0) next[i] = { ...next[i], ...entry, note: next[i].note || "" }; else next.push(entry);
+  }
+  $("reviewAdd").disabled = true;
+  msg.textContent = "Saving…";
+  try {
+    state.itemsSha = await ghPut("data/items.json", next, state.itemsSha, `Add ${chosen.length} item${chosen.length > 1 ? "s" : ""} from receipts`);
+    state.items = next;
+    pending = []; $("review").hidden = true;
+    msg.textContent = `Added ${chosen.length} item${chosen.length > 1 ? "s" : ""}. Checking prices…`;
+    await refresh();
+    msg.textContent = `Added ${chosen.length} item${chosen.length > 1 ? "s" : ""}.`;
+  } catch (err) {
+    msg.className = "msg err"; msg.textContent = err.message;
+  }
+  $("reviewAdd").disabled = false;
 });
 
 loadData().then(() => { render(); refresh(); });
