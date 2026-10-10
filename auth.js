@@ -2,6 +2,7 @@
 // The database (supabase/schema.sql) refuses data access until both steps pass.
 
 (function () {
+  const arrivedFrom = (location.hash.match(/[#&]type=(\w+)/) || [])[1] || "";  // signup, magiclink, recovery
   const cfg = window.APP_CONFIG || {};
   const enabled = !!(cfg.supabaseUrl && cfg.supabaseKey && window.supabase);
   const client = enabled ? window.supabase.createClient(cfg.supabaseUrl, cfg.supabaseKey, {
@@ -39,8 +40,15 @@
     return t;
   }
 
+  function amrOf(session) {
+    try {
+      const claims = JSON.parse(atob(session.access_token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
+      return (claims.amr || []).map(a => a.method);
+    } catch { return []; }
+  }
+
   async function sendCode() {
-    const { error } = await client.auth.signInWithOtp({ email: pendingEmail, options: { shouldCreateUser: false } });
+    const { error } = await client.auth.signInWithOtp({ email: pendingEmail, options: { shouldCreateUser: false, emailRedirectTo: location.origin + location.pathname } });
     if (error) throw error;
     startResendCountdown();
   }
@@ -86,7 +94,7 @@
       $("codeEmail").textContent = email;
       form.reset();
       show("vCode");
-      setMsg("We emailed you a 6-digit code.");
+      setMsg("");
     } catch (err) {
       setMsg(friendly(err), true);
     }
@@ -184,7 +192,7 @@
     $("codeInput").addEventListener("input", e => { if (e.target.value.replace(/\D/g, "").length === 6) $("fCode").requestSubmit(); });
     $("signOut").addEventListener("click", async () => { await client.auth.signOut(); location.reload(); });
 
-    let recovering = /type=recovery/.test(location.hash);
+    let recovering = arrivedFrom === "recovery";
     client.auth.onAuthStateChange(event => { if (event === "PASSWORD_RECOVERY") { recovering = true; show("vNewPw"); } });
 
     const { data: { session } } = await client.auth.getSession();
@@ -192,6 +200,17 @@
     if (session) {
       const { data: ok } = await client.rpc("session_verified");
       if (ok) { await finish(); return; }
+      // Arrived from the "Sign in" link in the email: that link is step 2.
+      if (amrOf(session).some(m => m === "otp" || m === "magiclink")) {
+        const { error } = await client.rpc("verify_session");
+        if (!error) { history.replaceState(null, "", location.pathname); await finish(); return; }
+        await client.auth.signOut({ scope: "local" });
+        history.replaceState(null, "", location.pathname);
+        show("vSignIn");
+        if (arrivedFrom === "signup") setMsg("Email confirmed. Sign in to finish.");
+        else setMsg("That sign-in link only works within 10 minutes of entering your password. Sign in again.", true);
+        return;
+      }
       await client.auth.signOut({ scope: "local" });
     }
     show("vSignIn");
