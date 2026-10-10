@@ -111,6 +111,12 @@ button { cursor: pointer; }
 .sheet-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; }
 .sheet-head h3 { font-size: 1.05rem; }
 .picks { list-style: none; margin: 0; padding: 0; display: grid; }
+#reviewRows { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.trip-head { display: grid; grid-template-columns: auto 1fr; gap: 12px; align-items: start; padding: 10px 0; border-top: 2px solid var(--rule); cursor: pointer; }
+.trip-head input { width: 20px; height: 20px; margin: 2px 0 0; accent-color: var(--accent); }
+.trip-head .why { display: block; font-size: .82rem; color: var(--muted); }
+.trip .pick { padding-left: 32px; }
+.trip .old > summary { cursor: pointer; padding: 0 0 8px 32px; font-size: .88rem; }
 .pick { display: grid; grid-template-columns: auto 1fr auto; gap: 4px 12px; align-items: start; padding: 10px 0; border-top: 1px solid var(--rule); }
 .pick input { width: 20px; height: 20px; margin: 2px 0 0; accent-color: var(--accent); }
 .pick label { min-width: 0; overflow-wrap: anywhere; cursor: pointer; }
@@ -859,18 +865,46 @@ async function readFiles(files) {
     const sameOrNewer = onList && onList.date && onList.date >= (it.date || "");
     return { ...it, pick: !old && !sameOrNewer,
       why: sameOrNewer ? "Already on your list" : old ? `Bought ${daysSince(it.date)} days ago, past the 30-day window` : onList ? "Updates the one on your list" : "" };
-  }).sort((a, b) => b.pick - a.pick);
+  }).sort((a, b) => (b.date || "").localeCompare(a.date || "") || b.pick - a.pick);
   msg.textContent = problems.join(" ");
   if (!pending.length) { msg.className = "msg err"; msg.textContent = problems.join(" ") || "No items found."; return; }
-  $("reviewRows").innerHTML = pending.map((it, i) => `<li class="pick">
-      <input type="checkbox" id="pick${i}" data-pick="${i}" ${it.pick ? "checked" : ""}>
-      <label for="pick${i}">${esc(prettyName(it.name) || "Item")} <span class="mono muted">#${esc(it.item)}</span>
-        <span class="why">${it.date ? `Bought ${shortDate(it.date)}` : ""}${it.why ? ` · ${esc(it.why)}` : ""}</span></label>
-      <span class="amt mono">${money(it.paid)}${it.discount ? `<span class="why">after ${money(it.discount)} off</span>` : ""}</span>
-    </li>`).join("");
-  updateReviewCount();
+  renderReview();
   $("review").hidden = false;
   $("review").scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+// One block per shopping trip, each with a checkbox that ticks or unticks the whole trip.
+const tripOf = it => `${it.date || ""}|${it.warehouse || ""}`;
+function renderReview() {
+  const trips = [...new Set(pending.map(tripOf))];
+  $("reviewRows").innerHTML = trips.map(t => {
+    const rows = pending.map((it, i) => ({ it, i })).filter(r => tripOf(r.it) === t);
+    const [date, wh] = t.split("|");
+    const total = rows.reduce((s, r) => s + (r.it.paid || 0), 0);
+    return `<li class="trip"><label class="trip-head"><input type="checkbox" data-trip="${esc(t)}">
+      <span><strong>${date ? `Trip on ${shortDate(date)}` : "Receipt"}</strong>${wh ? ` <span class="muted">· Costco #${esc(wh)}</span>` : ""}
+      <span class="why">${rows.length} item${rows.length === 1 ? "" : "s"} · ${money(total)}${date && daysSince(date) > ADJUST_DAYS ? " · past the 30-day window" : ""}</span></span></label>
+      ${date && daysSince(date) > ADJUST_DAYS
+        ? `<details class="old"><summary class="muted">Show items</summary><ul class="picks">${rows.map(({ it, i }) => pickRow(it, i)).join("")}</ul></details>`
+        : `<ul class="picks">${rows.map(({ it, i }) => pickRow(it, i)).join("")}</ul>`}</li>`;
+  }).join("");
+  syncTrips();
+  updateReviewCount();
+}
+function syncTrips() {
+  $("reviewRows").querySelectorAll("[data-trip]").forEach(box => {
+    const rows = pending.filter(it => tripOf(it) === box.dataset.trip);
+    const n = rows.filter(it => it.pick).length;
+    box.checked = n === rows.length;
+    box.indeterminate = n > 0 && n < rows.length;
+  });
+}
+function pickRow(it, i) {
+  return `<li class="pick">
+      <input type="checkbox" id="pick${i}" data-pick="${i}" ${it.pick ? "checked" : ""}>
+      <label for="pick${i}">${esc(prettyName(it.name) || "Item")} <span class="mono muted">#${esc(it.item)}</span>
+        ${it.why && !/30-day window/.test(it.why) ? `<span class="why">${esc(it.why)}</span>` : ""}</label>
+      <span class="amt mono">${money(it.paid)}${it.discount ? `<span class="why">after ${money(it.discount)} off</span>` : ""}</span>
+    </li>`;
 }
 function updateReviewCount() {
   const n = pending.filter(p => p.pick).length;
@@ -884,7 +918,16 @@ const drop = $("drop");
 ["dragenter", "dragover"].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.add("over"); }));
 ["dragleave", "drop"].forEach(t => drop.addEventListener(t, () => drop.classList.remove("over")));
 drop.addEventListener("drop", e => { e.preventDefault(); readFiles([...e.dataTransfer.files]); });
-$("reviewRows").addEventListener("change", e => { const i = e.target.dataset.pick; if (i != null) { pending[+i].pick = e.target.checked; updateReviewCount(); } });
+$("reviewRows").addEventListener("change", e => {
+  const i = e.target.dataset.pick, t = e.target.dataset.trip;
+  if (i != null) pending[+i].pick = e.target.checked;
+  if (t != null) {
+    pending.filter(it => tripOf(it) === t).forEach(it => { it.pick = e.target.checked; });
+    $("reviewRows").querySelectorAll("[data-pick]").forEach(b => { b.checked = pending[+b.dataset.pick].pick; });
+  }
+  syncTrips();
+  updateReviewCount();
+});
 $("reviewCancel").addEventListener("click", () => { pending = []; $("review").hidden = true; $("rcptMsg").textContent = ""; });
 $("reviewAdd").addEventListener("click", async () => {
   const msg = $("rcptMsg");
