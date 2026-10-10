@@ -155,7 +155,8 @@ button { cursor: pointer; }
 .card.urgent .window { color: var(--accent); font-weight: 600; }
 .x { border: 0; background: none; color: var(--muted); padding: 4px 6px; border-radius: 6px; font-size: .85rem; }
 .x:hover { color: var(--accent); background: var(--sunk); }
-.acts { display: flex; align-items: center; gap: 6px; }
+.acts { display: flex; align-items: center; gap: 4px 6px; flex-wrap: wrap; margin-left: auto; }
+.acts button { white-space: nowrap; }
 .hist { grid-column: 1 / -1; margin: 4px 0 0; }
 .hist svg { width: 100%; height: 90px; display: block; overflow: visible; }
 .hist polyline { fill: none; stroke: var(--good-strong); stroke-width: 2; vector-effect: non-scaling-stroke; }
@@ -350,6 +351,12 @@ input.in { width: 100%; padding: 9px 11px; border: 1px solid var(--rule); border
   <section class="group" aria-labelledby="watchH">
     <div class="group-head"><h2 id="watchH">Watching</h2><button class="link" id="refresh" type="button">Check now</button></div>
     <ul class="cards" id="watchList"></ul>
+  </section>
+
+  <section class="group" id="askGroup" hidden aria-labelledby="askH">
+    <div class="group-head"><h2 id="askH">Worth asking</h2></div>
+    <p class="muted" style="font-size:.88rem;margin:0">Cheaper now, but bought more than 30 days ago. Costco doesn't have to adjust these, so it's up to the person at the membership counter. It doesn't hurt to ask.</p>
+    <ul class="cards" id="askList"></ul>
   </section>
 
   <details class="group past" id="claimedGroup" hidden>
@@ -586,7 +593,11 @@ function assess(item) {
   const prev = past.length ? past[past.length - 1].price : null;
   let kind = "watch", back = 0;
   if (item.claimedAt) kind = "claimed";
-  else if (left != null && left < 0) kind = "past";
+  else if (left != null && left < 0) {
+    kind = "past";
+    // Past the 30 days but cheaper now: not guaranteed, but the counter may still adjust it.
+    if (item.paid && price != null && price < item.paid) { kind = "ask"; back = +(item.paid - price).toFixed(2); }
+  }
   else if (item.paid && price != null && price < item.paid) { kind = "due"; back = +(item.paid - price).toFixed(2); }
   return { live, price, age, left, prev, kind, back, name: prettyName(live?.name || item.name || item.note) || `Item #${item.item}` };
 }
@@ -618,6 +629,7 @@ function card(item, a, idx) {
   let chip = "";
   if (a.kind === "claimed") chip = `<span class="chip good">Got ${money(item.claimedAmt || 0)} back on ${shortDate(item.claimedAt.slice(0, 10))}</span>`;
   else if (a.kind === "due") chip = `<span class="chip good">Claim ${money(a.back)}</span>`;
+  else if (a.kind === "ask") chip = `<span class="chip warn">${money(a.back)} lower · ${-a.left} day${a.left === -1 ? "" : "s"} past</span>`;
   else if (a.price == null) chip = `<span class="chip plain">No price at #${esc(state.warehouse)}</span>`;
   else if (a.prev != null && a.price < a.prev) chip = `<span class="chip warn">Down from ${money(a.prev)}</span>`;
   else if (item.paid && a.price > item.paid) chip = `<span class="chip plain">Up ${money(a.price - item.paid)} since you bought</span>`;
@@ -638,7 +650,7 @@ function card(item, a, idx) {
     </div>
     <div class="foot"><span style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">${chip}${win}</span>
       <span class="acts"><button class="x" type="button" data-chart="${esc(item.item)}" aria-expanded="${openCharts.has(String(item.item))}">History</button>
-      ${a.kind === "due" ? `<button class="x" type="button" data-counter="${idx}">Show at counter</button><button class="btn small" type="button" data-claim="${idx}">Mark claimed</button>` : ""}
+      ${a.kind === "due" || a.kind === "ask" ? `<button class="x" type="button" data-counter="${idx}">Show at counter</button><button class="btn small" type="button" data-claim="${idx}">Mark claimed</button>` : ""}
       ${a.kind === "claimed" ? `<button class="x" type="button" data-unclaim="${idx}">Not claimed</button>` : ""}
       <button class="x" type="button" data-remove="${idx}" aria-label="Remove ${esc(a.name)}">Remove</button></span></div>
     ${openCharts.has(String(item.item)) ? chart(item, a) : ""}
@@ -658,6 +670,10 @@ function render() {
   const due = rows.filter(r => r.a.kind === "due").sort((x, y) => (x.a.left ?? 99) - (y.a.left ?? 99));
   const watch = rows.filter(r => r.a.kind === "watch").sort((x, y) => (x.a.left ?? 99) - (y.a.left ?? 99));
   const past = rows.filter(r => r.a.kind === "past");
+  const ask = rows.filter(r => r.a.kind === "ask").sort((x, y) => y.a.back - x.a.back);
+  $("askGroup").hidden = !ask.length;
+  $("askH").textContent = `Worth asking (${money(ask.reduce((s, r) => s + r.a.back, 0))})`;
+  $("askList").innerHTML = ask.map(r => card(r.it, r.a, r.idx)).join("");
   const claimed = rows.filter(r => r.a.kind === "claimed").sort((x, y) => (y.it.claimedAt || "").localeCompare(x.it.claimedAt || ""));
   const saved = claimed.reduce((s, r) => s + (r.it.claimedAmt || 0), 0);
   $("claimedGroup").hidden = !claimed.length;
@@ -750,7 +766,7 @@ function onRemove(e) {
   clearTimeout(undoTimer);
   undoTimer = setTimeout(() => { $("toast").hidden = true; lastRemoved = null; }, 6000);
 }
-["dueList", "watchList", "pastList", "claimedList"].forEach(id => $(id).addEventListener("click", onRemove));
+["dueList", "watchList", "pastList", "claimedList", "askList"].forEach(id => $(id).addEventListener("click", onRemove));
 
 // Mark claimed: record the refund so it stops alerting and counts toward the total.
 async function setClaimed(idx, on) {
@@ -762,7 +778,7 @@ async function setClaimed(idx, on) {
   catch (err) { $("checked").textContent = err.message; }
   render();
 }
-["dueList", "watchList", "pastList", "claimedList"].forEach(id => $(id).addEventListener("click", e => {
+["dueList", "watchList", "pastList", "claimedList", "askList"].forEach(id => $(id).addEventListener("click", e => {
   const h = e.target.closest("[data-chart]");
   if (!h) return;
   const k = h.dataset.chart;
@@ -770,7 +786,7 @@ async function setClaimed(idx, on) {
   render();
 }));
 // "Show at counter": big, plain facts to show the cashier.
-$("dueList").addEventListener("click", e => {
+["dueList", "askList"].forEach(id => $(id).addEventListener("click", e => {
   const b = e.target.closest("[data-counter]");
   if (!b) return;
   const it = state.items[+b.dataset.counter], a = assess(it);
@@ -784,10 +800,10 @@ $("dueList").addEventListener("click", e => {
       <dt>Price today</dt><dd class="mono">${money(a.price)}${a.live?.off ? ` (${money(a.live.off)} off)` : ""}</dd>
       <dt>Difference</dt><dd class="mono big good">${money(a.back)}</dd>
     </dl>
-    <p class="muted">Show your membership card or receipt at the membership counter.</p>`;
+    <p class="muted">${a.kind === "ask" ? "This is past Costco's 30-day window, so it's up to the staff. Ask politely at the membership counter." : "Show your membership card or receipt at the membership counter."}</p>`;
   $("counter").showModal();
-});
-["dueList", "claimedList"].forEach(id => $(id).addEventListener("click", e => {
+}));
+["dueList", "claimedList", "askList"].forEach(id => $(id).addEventListener("click", e => {
   const c = e.target.closest("[data-claim]"), u = e.target.closest("[data-unclaim]");
   if (c) setClaimed(+c.dataset.claim, true);
   if (u) setClaimed(+u.dataset.unclaim, false);
