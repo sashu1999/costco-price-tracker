@@ -1,0 +1,395 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Price Adjust Tracker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: one narrow receipt-like column. Summary line, item list, add form, settings at the bottom. */
+:root {
+  --paper: #fbfbf9;
+  --surface: #ffffff;
+  --ink: #1d2126;
+  --muted: #646b73;
+  --rule: #dde0e3;
+  --accent: #b3261e;      /* receipt-red: actions and focus */
+  --good: #1f7a45;        /* money back */
+  --good-bg: #e5f3ea;
+  --warn: #8a5a00;
+  --warn-bg: #fbf0d9;
+  --on-accent: #ffffff;
+  --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-data: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #15181b; --surface: #1d2125; --ink: #e8eaec; --muted: #9aa1a8; --rule: #30353a;
+    --accent: #ff7a6e; --good: #6fd39a; --good-bg: #173325; --warn: #f0c46a; --warn-bg: #3a2f17; --on-accent: #15181b;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #15181b; --surface: #1d2125; --ink: #e8eaec; --muted: #9aa1a8; --rule: #30353a;
+  --accent: #ff7a6e; --good: #6fd39a; --good-bg: #173325; --warn: #f0c46a; --warn-bg: #3a2f17; --on-accent: #15181b;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--paper); color: var(--ink);
+  font: 15px/1.5 var(--font-body);
+  padding: max(16px, env(safe-area-inset-top)) 16px max(32px, env(safe-area-inset-bottom));
+}
+main { max-width: 640px; margin: 0 auto; display: grid; gap: 28px; }
+h1 { font-size: 1.5rem; margin: 0; text-wrap: balance; font-weight: 600; }
+h2 { font-size: .78rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0 0 10px; font-weight: 600; }
+.mono { font-family: var(--font-data); font-variant-numeric: tabular-nums; }
+.muted { color: var(--muted); }
+header { display: grid; gap: 6px; }
+.where { display: flex; flex-wrap: wrap; gap: 6px 14px; color: var(--muted); font-size: .9rem; align-items: center; }
+.summary { font-size: 1rem; }
+.summary strong { color: var(--good); }
+
+button, input { font: inherit; color: inherit; }
+button {
+  border: 1px solid var(--rule); background: var(--surface); border-radius: 8px;
+  padding: 7px 12px; cursor: pointer;
+}
+button:hover { border-color: var(--muted); }
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 500; }
+button.link { border: 0; background: none; padding: 0; color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+button:disabled { opacity: .55; cursor: default; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+input {
+  width: 100%; padding: 8px 10px; border: 1px solid var(--rule); border-radius: 8px; background: var(--surface);
+}
+label { display: grid; gap: 4px; font-size: .82rem; color: var(--muted); min-width: 0; }
+
+.list { list-style: none; margin: 0; padding: 0; border-top: 1px dashed var(--rule); }
+.row {
+  display: grid; grid-template-columns: 1fr auto; gap: 4px 16px;
+  padding: 14px 0; border-bottom: 1px dashed var(--rule);
+}
+.row .name { font-weight: 500; min-width: 0; overflow-wrap: anywhere; }
+.row .meta { grid-column: 1; font-size: .82rem; color: var(--muted); display: flex; flex-wrap: wrap; gap: 2px 12px; }
+.row .price { grid-row: 1 / span 2; grid-column: 2; text-align: right; display: grid; align-content: start; justify-items: end; gap: 4px; }
+.row .price .now { font-size: 1.15rem; font-weight: 600; }
+.row .actions { grid-column: 1 / -1; display: flex; gap: 12px; align-items: center; font-size: .85rem; }
+.chip { display: inline-block; border-radius: 999px; padding: 1px 9px; font-size: .78rem; font-weight: 500; white-space: nowrap; }
+.chip.good { background: var(--good-bg); color: var(--good); }
+.chip.warn { background: var(--warn-bg); color: var(--warn); }
+.chip.plain { border: 1px solid var(--rule); color: var(--muted); }
+.spark { width: 84px; height: 22px; display: block; }
+.spark path { fill: none; stroke: var(--muted); stroke-width: 1.5; }
+.spark circle { fill: var(--accent); }
+
+.empty { padding: 20px 0; color: var(--muted); border-bottom: 1px dashed var(--rule); }
+form.add { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; align-items: end; }
+form.add .full { grid-column: 1 / -1; }
+.note { font-size: .85rem; color: var(--muted); margin: 8px 0 0; }
+.msg { font-size: .88rem; min-height: 1.3em; margin: 0; }
+.msg.err { color: var(--accent); }
+details { border-top: 1px solid var(--rule); padding-top: 14px; }
+summary { cursor: pointer; font-weight: 500; }
+.settings { display: grid; gap: 12px; margin-top: 12px; }
+.settings ol { margin: 0; padding-left: 20px; font-size: .88rem; color: var(--muted); }
+@media (prefers-reduced-motion: no-preference) { .row { transition: background .2s; } }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Price Adjust Tracker</h1>
+    <div class="where">
+      <span>Costco warehouse <span class="mono" id="whLabel">#233</span></span>
+      <span id="checked">Loading prices…</span>
+      <button class="link" id="refresh" type="button">Check now</button>
+    </div>
+    <p class="summary" id="summary"></p>
+  </header>
+
+  <section aria-labelledby="itemsH">
+    <h2 id="itemsH">Items you bought</h2>
+    <ul class="list" id="list"></ul>
+  </section>
+
+  <section aria-labelledby="addH">
+    <h2 id="addH">Add an item from a receipt</h2>
+    <form class="add" id="addForm" autocomplete="off">
+      <label>Item number<input id="fItem" class="mono" inputmode="numeric" pattern="[0-9]{3,9}" required placeholder="1613453"></label>
+      <label>Price paid<input id="fPaid" class="mono" inputmode="decimal" placeholder="19.99"></label>
+      <label>Date bought<input id="fDate" type="date"></label>
+      <label class="full">Note<input id="fNote" placeholder="Optional, e.g. gift for Sam"></label>
+      <div class="full"><button class="primary" type="submit" id="addBtn">Add item</button></div>
+    </form>
+    <p class="msg" id="addMsg" role="status"></p>
+    <p class="note">Costco adjusts the price if it drops within 30 days of purchase. Prices include this month's warehouse coupons. A GitHub issue (and email) is opened when a price drops; checks run every 2 days.</p>
+  </section>
+
+  <details id="settings">
+    <summary>Settings</summary>
+    <div class="settings">
+      <label>Warehouse number<input id="sWh" class="mono" inputmode="numeric"></label>
+      <label>GitHub token (needed to add or remove items)<input id="sToken" type="password" placeholder="github_pat_…"></label>
+      <ol>
+        <li>Open <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">GitHub → Fine-grained tokens</a>.</li>
+        <li>Repository access: only <span class="mono" id="repoName">this repo</span>. Permissions: Contents → Read and write.</li>
+        <li>Paste it here. It stays in this browser only.</li>
+      </ol>
+      <div><button type="button" id="saveSettings">Save settings</button></div>
+      <p class="msg" id="setMsg" role="status"></p>
+    </div>
+  </details>
+</main>
+
+<script>
+const API = "https://gdx-api.costco.com/catalog/product/product-api/v2/products/summary";
+const CLIENT_ID = "4900eb1f-0c10-4bd9-99c3-c59e6c1ecebf";
+const API_HEADERS = { "client-identifier": "b1be4e95-8696-4d93-8f50-5b5632922209", "costco-env": "prd" };
+const ADJUST_DAYS = 30;
+const $ = id => document.getElementById(id);
+
+// owner.github.io/repo  ->  {owner, repo}
+const repo = (() => {
+  const owner = location.hostname.endsWith(".github.io") ? location.hostname.split(".")[0] : "sashu1999";
+  const name = location.pathname.split("/").filter(Boolean)[0] || "costco-price-tracker";
+  return { owner, name };
+})();
+$("repoName").textContent = `${repo.owner}/${repo.name}`;
+
+const store = {
+  get(k) { try { return localStorage.getItem(k) || ""; } catch { return ""; } },
+  set(k, v) { try { v ? localStorage.setItem(k, v) : localStorage.removeItem(k); } catch {} },
+};
+
+let state = { warehouse: "233", items: [], itemsSha: null, configSha: null, coupons: {}, history: {}, live: {}, lastRun: null };
+
+async function getJSON(path) {
+  const r = await fetch(`${path}?v=${Date.now()}`);
+  if (!r.ok) throw new Error(`${path}: ${r.status}`);
+  return r.json();
+}
+
+// Read/write files in the repo through the GitHub API (fresh, and needed for writes).
+async function ghGet(path) {
+  const token = store.get("ghToken");
+  const r = await fetch(`https://api.github.com/repos/${repo.owner}/${repo.name}/contents/${path}?ref=main`, {
+    headers: { Accept: "application/vnd.github+json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    cache: "no-store",
+  });
+  if (!r.ok) throw new Error(`GitHub said ${r.status} reading ${path}`);
+  const j = await r.json();
+  const text = new TextDecoder().decode(Uint8Array.from(atob(j.content.replace(/\n/g, "")), c => c.charCodeAt(0)));
+  return { data: JSON.parse(text), sha: j.sha };
+}
+async function ghPut(path, data, sha, message) {
+  const token = store.get("ghToken");
+  if (!token) throw new Error("Add a GitHub token in Settings first, so the change can be saved to your repo.");
+  const bytes = new TextEncoder().encode(JSON.stringify(data, null, 1) + "\n");
+  const content = btoa(String.fromCharCode(...bytes));
+  const r = await fetch(`https://api.github.com/repos/${repo.owner}/${repo.name}/contents/${path}`, {
+    method: "PUT",
+    headers: { Accept: "application/vnd.github+json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ message, content, sha, branch: "main" }),
+  });
+  if (r.status === 401 || r.status === 403) throw new Error("GitHub rejected the token. Check it has Contents: Read and write on this repo.");
+  if (r.status === 409) throw new Error("The list changed elsewhere. Reload the page and try again.");
+  if (!r.ok) throw new Error(`GitHub said ${r.status} saving ${path}.`);
+  return (await r.json()).content.sha;
+}
+
+async function loadData() {
+  try {
+    const items = await ghGet("data/items.json"); state.items = items.data; state.itemsSha = items.sha;
+    const cfg = await ghGet("data/config.json"); state.warehouse = String(cfg.data.warehouse); state.configSha = cfg.sha;
+  } catch {
+    state.items = await getJSON("data/items.json").catch(() => []);
+    state.warehouse = String((await getJSON("data/config.json").catch(() => ({}))).warehouse || "233");
+  }
+  state.coupons = (await getJSON("data/coupons.json").catch(() => ({}))).coupons || {};
+  state.history = await getJSON("data/history.json").catch(() => ({}));
+  state.lastRun = (await getJSON("data/latest.json").catch(() => ({}))).date || null;
+}
+
+async function livePrices(numbers) {
+  const out = {};
+  for (let i = 0; i < numbers.length; i += 20) {
+    const batch = numbers.slice(i, i + 20);
+    const url = `${API}?clientId=${CLIENT_ID}&items=${batch.join(",")}&whsNumber=847,${state.warehouse}&locales=en-us`;
+    const r = await fetch(url, { headers: API_HEADERS });
+    if (!r.ok) throw new Error(`Costco said ${r.status}`);
+    const j = await r.json();
+    for (const p of j.productData || []) {
+      const wh = (p.displayPrice || []).find(d => d.warehouseNumber === state.warehouse);
+      const name = p.descriptions?.[0]?.object?.shortDescription?.replace(/\s+/g, " ").trim();
+      let price = wh && wh.deliveredPrice ? wh.deliveredPrice : null;
+      let off = wh && wh.aggregatedDiscountAmt ? wh.aggregatedDiscountAmt : null;
+      const c = state.coupons[p.id];
+      if (c && price != null && !off) {
+        const after = c.final != null ? c.final : +(price - c.off).toFixed(2);
+        off = c.off != null ? c.off : +(price - after).toFixed(2);
+        price = after;
+      }
+      out[p.id] = { name, price, off };
+    }
+  }
+  return out;
+}
+
+const money = n => `$${Number(n).toFixed(2)}`;
+const daysSince = d => Math.floor((Date.now() - new Date(d + "T12:00:00").getTime()) / 864e5);
+
+function spark(points) {
+  if (points.length < 2) return "";
+  const w = 84, h = 22, ys = points.map(p => p.price);
+  const lo = Math.min(...ys), hi = Math.max(...ys), span = hi - lo || 1;
+  const xy = points.map((p, i) => [2 + i * (w - 4) / (points.length - 1), 3 + (h - 6) * (1 - (p.price - lo) / span)]);
+  const d = xy.map(([x, y], i) => `${i ? "L" : "M"}${x.toFixed(1)},${y.toFixed(1)}`).join("");
+  const [lx, ly] = xy[xy.length - 1];
+  return `<svg class="spark" viewBox="0 0 ${w} ${h}" aria-label="Price history"><path d="${d}"/><circle cx="${lx}" cy="${ly}" r="2.5"/></svg>`;
+}
+
+function status(item, live) {
+  if (!live || live.price == null) return { chip: `<span class="chip plain">No price at this warehouse</span>`, back: 0 };
+  const inWindow = !item.date || daysSince(item.date) <= ADJUST_DAYS;
+  if (item.paid && live.price < item.paid && inWindow) {
+    const back = item.paid - live.price;
+    return { chip: `<span class="chip good">Ask for ${money(back)} back</span>`, back };
+  }
+  if (item.paid && live.price < item.paid) return { chip: `<span class="chip plain">Cheaper now, past 30 days</span>`, back: 0 };
+  const past = (state.history[item.item] || []).filter(p => p.date !== new Date().toISOString().slice(0, 10));
+  const prev = past.length ? past[past.length - 1].price : null;
+  if (prev != null && live.price < prev) return { chip: `<span class="chip warn">Down from ${money(prev)}</span>`, back: 0 };
+  return { chip: "", back: 0 };
+}
+
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+function render() {
+  $("whLabel").textContent = `#${state.warehouse}`;
+  $("sWh").value = state.warehouse;
+  $("sToken").value = store.get("ghToken");
+  const list = $("list");
+  if (!state.items.length) {
+    list.innerHTML = `<li class="empty">No items yet. Add an item number from your receipt below.</li>`;
+    $("summary").textContent = "";
+    return;
+  }
+  let totalBack = 0, due = 0;
+  list.innerHTML = state.items.map((it, idx) => {
+    const live = state.live[it.item];
+    const st = status(it, live);
+    if (st.back) { totalBack += st.back; due++; }
+    const hist = state.history[it.item] || [];
+    const name = live?.name || it.note || "Unknown item";
+    return `<li class="row">
+      <div class="name">${esc(name)}</div>
+      <div class="price">
+        <span class="now mono">${live?.price != null ? money(live.price) : "—"}</span>
+        ${live?.off ? `<span class="chip plain mono">incl. ${money(live.off)} off</span>` : ""}
+        ${spark(hist)}
+      </div>
+      <div class="meta">
+        <span class="mono">#${esc(it.item)}</span>
+        ${it.paid ? `<span>Paid <span class="mono">${money(it.paid)}</span></span>` : ""}
+        ${it.date ? `<span>Bought ${esc(it.date)} (${daysSince(it.date)}d ago)</span>` : ""}
+        ${it.note && live?.name ? `<span>${esc(it.note)}</span>` : ""}
+      </div>
+      <div class="actions">${st.chip}<button class="link" type="button" data-remove="${idx}">Remove</button></div>
+    </li>`;
+  }).join("");
+  $("summary").innerHTML = due
+    ? `<strong>${money(totalBack)}</strong> to claim back on ${due} item${due > 1 ? "s" : ""}. Show the receipt at the membership counter.`
+    : `${state.items.length} item${state.items.length > 1 ? "s" : ""} tracked. No adjustments due right now.`;
+}
+
+async function refresh() {
+  $("checked").textContent = "Checking prices…";
+  $("refresh").disabled = true;
+  try {
+    state.live = await livePrices(state.items.map(i => String(i.item)));
+    const t = new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    $("checked").textContent = `Live prices as of ${t}` + (state.lastRun ? ` · last scheduled check ${state.lastRun}` : "");
+  } catch (e) {
+    $("checked").textContent = `Couldn't reach Costco (${e.message}). Showing saved data.`;
+  }
+  $("refresh").disabled = false;
+  render();
+}
+
+$("refresh").addEventListener("click", refresh);
+
+$("addForm").addEventListener("submit", async e => {
+  e.preventDefault();
+  const item = $("fItem").value.trim();
+  const paid = $("fPaid").value.trim() ? parseFloat($("fPaid").value.replace("$", "")) : null;
+  const msg = $("addMsg");
+  msg.className = "msg";
+  if (!/^\d{3,9}$/.test(item)) { msg.className = "msg err"; msg.textContent = "Item number should be digits only, as printed on the receipt."; return; }
+  if (paid !== null && !(paid > 0)) { msg.className = "msg err"; msg.textContent = "Price paid should be a number like 19.99."; return; }
+  if (state.items.some(i => String(i.item) === item)) { msg.className = "msg err"; msg.textContent = `#${item} is already on the list.`; return; }
+  $("addBtn").disabled = true;
+  msg.textContent = "Looking it up and saving…";
+  try {
+    const live = await livePrices([item]).catch(() => ({}));
+    const entry = { item, paid, date: $("fDate").value || null, note: $("fNote").value.trim() || live[item]?.name || "" };
+    const next = [...state.items, entry];
+    state.itemsSha = await ghPut("data/items.json", next, state.itemsSha, `Add item ${item}`);
+    state.items = next;
+    Object.assign(state.live, live);
+    e.target.reset();
+    msg.textContent = live[item]?.name ? `Added ${live[item].name}.` : `Added #${item}. Costco has no price for it at this warehouse yet.`;
+    render();
+  } catch (err) {
+    msg.className = "msg err"; msg.textContent = err.message;
+  }
+  $("addBtn").disabled = false;
+});
+
+// Remove asks for a second tap instead of a dialog.
+$("list").addEventListener("click", async e => {
+  const btn = e.target.closest("[data-remove]");
+  if (!btn) return;
+  if (btn.dataset.armed !== "1") { btn.dataset.armed = "1"; btn.textContent = "Tap again to remove"; setTimeout(() => { btn.dataset.armed = ""; btn.textContent = "Remove"; }, 4000); return; }
+  const idx = +btn.dataset.remove, it = state.items[idx];
+  const next = state.items.filter((_, i) => i !== idx);
+  btn.disabled = true;
+  try {
+    state.itemsSha = await ghPut("data/items.json", next, state.itemsSha, `Remove item ${it.item}`);
+    state.items = next;
+    render();
+  } catch (err) {
+    $("addMsg").className = "msg err"; $("addMsg").textContent = err.message; btn.disabled = false;
+  }
+});
+
+$("saveSettings").addEventListener("click", async () => {
+  const msg = $("setMsg");
+  msg.className = "msg";
+  store.set("ghToken", $("sToken").value.trim());
+  const wh = $("sWh").value.trim();
+  try {
+    if (wh && wh !== state.warehouse) {
+      if (!/^\d{1,5}$/.test(wh)) throw new Error("Warehouse number should be digits, like 233.");
+      if (!state.configSha) state.configSha = (await ghGet("data/config.json")).sha;
+      state.configSha = await ghPut("data/config.json", { warehouse: wh }, state.configSha, `Use warehouse ${wh}`);
+      state.warehouse = wh;
+    }
+    if (store.get("ghToken") && !state.itemsSha) {
+      const items = await ghGet("data/items.json"); state.items = items.data; state.itemsSha = items.sha;
+    }
+    msg.textContent = "Saved.";
+    refresh();
+  } catch (err) {
+    msg.className = "msg err"; msg.textContent = err.message;
+  }
+});
+
+loadData().then(() => { render(); refresh(); });
+</script>
+</body>
+</html>
