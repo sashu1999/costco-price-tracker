@@ -443,13 +443,7 @@ async function saveItems(next, message) {
 async function loadData() {
   if (window.Cloud?.enabled) {
     state.items = await Cloud.loadItems();
-    const local = localItems();
-    if (local && local.length) {   // first sign-in on this browser: move items saved here into the account
-      const merged = [...state.items.filter(r => !local.some(l => String(l.item) === String(r.item))), ...local];
-      await Cloud.saveItems(merged, state.items);
-      state.items = merged;
-      store.set("localItems", "");
-    }
+    store.set("localItems", "");   // each account starts with only its own items; nothing carries over from this browser
     const profile = await Cloud.loadProfile();
     state.warehouse = String(profile.warehouse || store.get("warehouse") || "233");
     state.warehouseName = profile.warehouse_name || (store.get("warehouse") === state.warehouse ? store.get("warehouseName") : "");
