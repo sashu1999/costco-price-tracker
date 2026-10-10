@@ -14,6 +14,7 @@ Environment (GitHub Actions secrets):
 import datetime as dt
 import json
 import os
+import re
 import smtplib
 import sys
 import time
@@ -143,7 +144,13 @@ def main():
     by_user = defaultdict(list)
     for it in items:
         by_user[it["user_id"]].append(it)
-    store_of = {u: str(profiles.get(u, {}).get("warehouse") or "233") for u in by_user}
+    # Store numbers come from users, so only plain warehouse numbers reach the Costco call.
+    store_of = {}
+    for u in by_user:
+        wh = str(profiles.get(u, {}).get("warehouse") or "233")
+        store_of[u] = wh if re.fullmatch(r"[0-9]{1,5}", wh) else "233"
+    for u, its in by_user.items():
+        by_user[u] = [it for it in its if re.fullmatch(r"[0-9]{3,9}", str(it["item"]))]
 
     coupons = warehouse_coupons()
     prices = {}                      # warehouse -> item -> result
@@ -151,8 +158,11 @@ def main():
         numbers = sorted({it["item"] for u, its in by_user.items() if store_of[u] == store for it in its})
         prices[store] = {}
         for start in range(0, len(numbers), 20):
-            for r in check_items(numbers[start:start + 20], store):
-                prices[store][r["item"]] = apply_coupon(r, coupons)
+            try:
+                for r in check_items(numbers[start:start + 20], store):
+                    prices[store][r["item"]] = apply_coupon(r, coupons)
+            except Exception as e:   # one bad batch shouldn't stop everyone else's alerts
+                print(f"Price check failed at #{store}: {e}")
             time.sleep(1)
         db.upsert("price_history", [{"warehouse": store, "item": n, "checked_on": today.isoformat(), "price": r["price"]}
                                     for n, r in prices[store].items() if r["price"] is not None],
