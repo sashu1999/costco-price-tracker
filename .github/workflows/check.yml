@@ -2,7 +2,7 @@ name: Check prices
 
 on:
   schedule:
-    - cron: "52 12 */2 * *"   # every 2 days, 8:52am Eastern (EDT)
+    - cron: "52 12 * * *"   # every day, 8:52am Eastern (EDT)
   workflow_dispatch:
   push:
     branches: [main]

@@ -380,13 +380,13 @@ input.in { width: 100%; padding: 9px 11px; border: 1px solid var(--rule); border
         <p style="margin:0"><strong>Put it on your home screen</strong> <span class="muted" id="installHow"></span></p>
         <button class="btn" type="button" id="installBtn" hidden>Install app</button>
       </div>
-      <label class="check" id="alertsRow" hidden><input type="checkbox" id="sAlerts"> Email me when something I bought drops in price (checked every 2 days)</label>
+      <label class="check" id="alertsRow" hidden><input type="checkbox" id="sAlerts"> Email me when something I bought drops in price (checked every morning)</label>
       <div id="tokenBox">
       <label class="f">GitHub token, optional (for email alerts and the same list on all your devices)<input class="in" id="sToken" type="password" placeholder="github_pat_…"></label>
       <ol>
         <li>Open <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">GitHub → Fine-grained tokens</a>.</li>
         <li>Repository access: only <span class="mono" id="repoName">this repo</span>. Permissions: Contents → Read and write.</li>
-        <li>Paste it here. It stays in this browser. Your items are copied to the repo so the 2-day check can email you.</li>
+        <li>Paste it here. It stays in this browser. Your items are copied to the repo so the daily check can email you.</li>
       </ol>
       </div>
       <div><button class="btn" type="button" id="saveSettings">Save</button></div>

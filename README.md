@@ -8,7 +8,7 @@ in-store price at your warehouse. It flags when you're due a price adjustment
 - **Prices** come from costco.com's public product API, which returns per-warehouse
   in-store prices by item number (no login). This month's warehouse coupons are
   read from costco.com's Warehouse Savings page and taken off.
-- **Scheduled check:** `.github/workflows/check.yml` runs every 2 days, saves
+- **Scheduled check:** `.github/workflows/check.yml` runs every morning, saves
   prices to `data/history.json`, and opens a GitHub issue when a price drops or an
   adjustment is due (GitHub emails you about new issues).
 
@@ -31,7 +31,7 @@ your browser only.
 With `config.js` filled in, people create an account (password, then an emailed sign-in link or code).
 Each account keeps its own items and store (picked by ZIP code under **Store & alerts**).
 
-Every 2 days `tracker/alerts.py` checks each account's items at that account's store, saves prices to
+Every morning `tracker/alerts.py` checks each account's items at that account's store, saves prices to
 `price_history`, and emails each person the drops they can claim (once per drop). It needs these
 repository secrets (Settings → Secrets and variables → Actions):
 
