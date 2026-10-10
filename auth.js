@@ -1,4 +1,4 @@
-// Accounts: email + password, then a 6-digit code emailed to you.
+// Accounts: email + password, then a code emailed to you.
 // The database (supabase/schema.sql) refuses data access until both steps pass.
 
 (function () {
@@ -105,7 +105,7 @@
     e.preventDefault();
     const form = e.target;
     const token = $("codeInput").value.replace(/\D/g, "");
-    if (token.length < 6) { setMsg("Enter the 6-digit code from the email.", true); return; }
+    if (token.length < 6) { setMsg("Enter the code from the email.", true); return; }
     busy(form, true);
     setMsg("Verifying…");
     try {
@@ -189,7 +189,7 @@
       try { await sendCode(); setMsg("New code sent."); } catch (err) { setMsg(friendly(err), true); }
     });
     document.querySelectorAll("[data-view]").forEach(b => b.addEventListener("click", () => show(b.dataset.view)));
-    $("codeInput").addEventListener("input", e => { if (e.target.value.replace(/\D/g, "").length === 6) $("fCode").requestSubmit(); });
+    $("codeInput").addEventListener("input", e => { const n = e.target.value.replace(/\D/g, "").length; if (n === 8) $("fCode").requestSubmit(); });  // Supabase codes are 6 to 10 digits; 8 is the default
     $("signOut").addEventListener("click", async () => { await client.auth.signOut(); location.reload(); });
 
     let recovering = arrivedFrom === "recovery";
